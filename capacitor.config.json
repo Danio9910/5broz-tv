@@ -1,0 +1,17 @@
+{
+  "appId": "com.fivebroz.app",
+  "appName": "5broz",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://5broz.com",
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {}
+}
