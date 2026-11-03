@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -39,8 +42,18 @@ jobs:
           cd android
           ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk 5broz.apk
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: 5broz-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: 5broz.apk
+
+      - name: Publish to Release (stable direct link)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: 5broz latest APK
+          files: 5broz.apk
