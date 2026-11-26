@@ -2,7 +2,7 @@ name: Build 5broz APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -12,48 +12,48 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Setup Java (JDK 21)
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '21'
+          java-version: '17'
 
-      - name: Install Dependencies
-        run: npm install
+      - uses: gradle/actions/setup-gradle@v4
 
-      - name: Sync Capacitor
+      - name: Build release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          npm run build
-          npx cap sync android
-
-      - name: Make Gradle Executable
-        run: chmod +x ./android/gradlew
-
-      - name: Build Debug APK
-        run: |
-          cd android
-          ./gradlew assembleDebug --no-daemon
+          chmod +x ./gradlew
+          set -o pipefail
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
 
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk 5broz.apk
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: 5broz-APK
-          path: 5broz.apk
+        id: apk
+        run: |
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk 5broz.apk
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No signing password configured - compiled only, not published."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Publish to Release (stable direct link)
+        if: steps.apk.outputs.signed == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: 5broz latest APK
           files: 5broz.apk
+
+      # On failure, publish the log so it can be read without signing in.
+      - name: Publish build log
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-log
+          name: CI build log
+          prerelease: true
+          files: build.log
