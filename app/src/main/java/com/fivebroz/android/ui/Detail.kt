@@ -4,6 +4,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,6 +22,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -55,6 +59,7 @@ import kotlinx.coroutines.launch
 
 private fun epLabel(e: Episode) = "م${e.season} · ح${e.episode}" + if (e.title.isNotBlank()) " — ${e.title}" else ""
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: () -> Unit) {
     val ctx = LocalContext.current
@@ -139,6 +144,18 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
         else -> "تشغيل"
     }
 
+    // Check up front whether anything is playable, so we never offer a dead "play".
+    var available by remember(mainVideo) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(mainVideo) {
+        if (mainVideo != null && canPlay) {
+            available = try {
+                Api.streams(d.base.type, mainVideo).isNotEmpty()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize()) {
             item("head") {
@@ -186,8 +203,11 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
                             )
                         }
                         VSpace(18.dp)
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (mainText != null && mainVideo != null) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            if (mainText != null && mainVideo != null && available != false) {
                                 GoldButton(mainText, { play(mainVideo, mainLabel) }, focusRequester = playFr)
                             }
                             GoldButton(if (saved) "✓ في قائمتي" else "+ قائمتي", {
@@ -195,9 +215,13 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
                                 saved = now
                                 scope.launch { Db.setInLibrary(d.base, now) }
                             }, filled = false, focusRequester = if (mainText == null) playFr else null)
-                            if (mainVideo != null && canPlay) {
+                            if (mainVideo != null && canPlay && available != false) {
                                 GoldButton("المصادر", { sourcesFor = mainVideo to mainLabel }, filled = false)
                             }
+                        }
+                        if (available == false) {
+                            VSpace(10.dp)
+                            Text("لا توجد مصادر لهذا العنوان حالياً — غالباً لم يُعرض بعد.", color = C.Muted, style = MaterialTheme.typography.bodyMedium)
                         }
                         if (!canPlay) {
                             VSpace(10.dp)
@@ -259,8 +283,10 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
 
         if (!isTv) {
             // Touch devices get an explicit way back.
-            Box(Modifier.statusBarsPadding().padding(12.dp)) {
-                GoldButton("رجوع", onBack, filled = false)
+            Focusable(onBack, Modifier.statusBarsPadding().padding(12.dp), shape = CircleShape, lift = 1f) {
+                Box(Modifier.size(40.dp).background(C.Ink950.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
+                    Text("→", style = MaterialTheme.typography.titleLarge, color = C.Paper)
+                }
             }
         }
 

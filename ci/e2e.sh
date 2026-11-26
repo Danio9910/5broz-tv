@@ -31,9 +31,18 @@ tap_text() {
 adb logcat -c
 adb shell am start -n $PKG/.MainActivity
 sleep 20; shot 1-home
-tap_text "شاهد الآن"
-sleep 12; shot 2-detail
-tap_text "تشغيل" || tap_text "متابعة"
+# Find a well-known, released film through search.
+tap_text "بحث"
+sleep 3
+tap_text "ابحث عن فيلم"
+sleep 2
+adb shell input text "Shawshank"
+sleep 8; shot 2-search
+adb shell input keyevent 111   # hide keyboard
+sleep 1
+tap_text "@poster"
+sleep 15; shot 2b-detail
+tap_text "تشغيل"
 sleep 30; shot 3-player-30s
 sleep 45; shot 4-player-75s
 sleep 45; shot 5-player-120s
