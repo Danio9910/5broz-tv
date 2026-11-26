@@ -101,7 +101,7 @@ private sealed interface Overlay {
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)
-class PlayerActivity : ComponentActivity() {
+class PlayerActivity : ComponentActivity(), PlayerActions {
 
     companion object {
         /** A source chosen by hand in the sources panel (handed over in-process). */
@@ -129,7 +129,8 @@ class PlayerActivity : ComponentActivity() {
     private var isTv = false
 
     private var overlay by mutableStateOf<Overlay>(Overlay.Loading("جارٍ تجهيز أفضل مصدر…"))
-    private var controlsVisible by mutableStateOf(false)
+    private val ui = PlayerUi()
+    private var subScale = 1.1f
 
     private var candidates: List<Stream> = emptyList()
     private var torrentJob: Job? = null
@@ -164,13 +165,8 @@ class PlayerActivity : ComponentActivity() {
         val root = FrameLayout(this).apply { setBackgroundColor(AColor.BLACK) }
         playerView = PlayerView(this).apply {
             keepScreenOn = true
-            setShowSubtitleButton(true)
-            setShowNextButton(false)
-            setShowPreviousButton(false)
-            controllerShowTimeoutMs = 3500
-            setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v ->
-                controlsVisible = v == View.VISIBLE
-            })
+            useController = false // our own controls (Controls.kt)
+            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
             subtitleView?.apply {
                 setStyle(
                     CaptionStyleCompat(
@@ -190,6 +186,101 @@ class PlayerActivity : ComponentActivity() {
         setContentView(root)
 
         begin()
+        // Keep the on-screen clock and auto-hide in step with playback.
+        lifecycleScope.launch {
+            while (true) {
+                delay(400)
+                val p = player
+                if (p != null) {
+                    ui.position = p.currentPosition
+                    ui.duration = p.duration.takeIf { it > 0 } ?: 0L
+                    ui.buffered = p.bufferedPosition
+                    ui.playing = p.isPlaying
+                    ui.buffering = p.playbackState == Player.STATE_BUFFERING || p.playbackState == Player.STATE_IDLE
+                }
+                if (ui.visible && ui.playing && !ui.subsOpen && System.currentTimeMillis() - ui.lastPoke > 4500) {
+                    ui.visible = false
+                }
+            }
+        }
+    }
+
+    // ---------- actions used by the controls ----------
+
+    override fun poke() {
+        ui.lastPoke = System.currentTimeMillis()
+    }
+
+    private fun show() {
+        ui.visible = true
+        poke()
+    }
+
+    override fun togglePlay() {
+        val p = player ?: return
+        if (p.isPlaying) p.pause() else p.play()
+        ui.playing = !ui.playing
+        poke()
+    }
+
+    override fun seekTo(ms: Long) {
+        val p = player ?: return
+        p.seekTo(ms.coerceIn(0, (p.duration.takeIf { it > 0 } ?: Long.MAX_VALUE)))
+        ui.position = p.currentPosition
+        poke()
+    }
+
+    private var flashJob: Job? = null
+    override fun seekBy(sec: Int) {
+        val p = player ?: return
+        seekTo(p.currentPosition + sec * 1000L)
+        ui.flash = if (sec > 0) "+$sec ث" else "−${-sec} ث"
+        flashJob?.cancel()
+        flashJob = lifecycleScope.launch {
+            delay(650)
+            ui.flash = null
+        }
+    }
+
+    override fun back() = finish()
+
+    override fun subtitleOptions(): List<SubOption> {
+        val p = player ?: return emptyList()
+        val off = p.trackSelectionParameters.disabledTrackTypes.contains(MC.TRACK_TYPE_TEXT)
+        val out = mutableListOf(
+            SubOption("بدون ترجمة", off) {
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, true).build()
+            },
+        )
+        p.currentTracks.groups.filter { it.type == MC.TRACK_TYPE_TEXT }.forEachIndexed { i, g ->
+            val f = g.getTrackFormat(0)
+            val label = f.label ?: f.language?.let { if (it.startsWith("ar")) "العربية" else it } ?: "ترجمة ${i + 1}"
+            out += SubOption(label, !off && g.isSelected) {
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, false)
+                    .setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, 0))
+                    .build()
+            }
+        }
+        return out
+    }
+
+    override fun setSubtitleSize(scale: Float) {
+        subScale = scale
+        playerView.subtitleView?.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * scale)
+    }
+
+    override fun otherSource() {
+        ui.visible = false
+        tryNext()
+    }
+
+    override val hasNextEpisode: Boolean get() = args.queueIds.isNotEmpty()
+
+    override fun nextEpisode() {
+        saveNow()
+        playNext()
     }
 
     // ---------- playback ----------
@@ -339,7 +430,6 @@ class PlayerActivity : ComponentActivity() {
         p.prepare()
         startedAt = System.currentTimeMillis()
         skipped = false
-        playerView.requestFocus()
         startSaving()
     }
 
@@ -408,23 +498,48 @@ class PlayerActivity : ComponentActivity() {
     // ---------- remote / keys ----------
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (overlay is Overlay.Next || overlay is Overlay.Failed) return super.dispatchKeyEvent(event)
-        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
-            // First back hides the controls; the second leaves.
-            if (playerView.isControllerFullyVisible) {
-                if (event.action == KeyEvent.ACTION_UP) playerView.hideController()
+        if (overlay is Overlay.Next || overlay is Overlay.Failed || ui.subsOpen) {
+            if (ui.subsOpen && event.keyCode == KeyEvent.KEYCODE_BACK) {
+                if (event.action == KeyEvent.ACTION_UP) ui.subsOpen = false
                 return true
             }
             return super.dispatchKeyEvent(event)
         }
-        if (event.action == KeyEvent.ACTION_DOWN && !playerView.isControllerFullyVisible) {
-            playerView.showController()
-            // The first OK press only reveals the controls.
-            if (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER) {
+        val down = event.action == KeyEvent.ACTION_DOWN
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_BACK -> {
+                // First back hides the controls; the second leaves.
+                if (ui.visible) {
+                    if (!down) ui.visible = false
+                    return true
+                }
+                return super.dispatchKeyEvent(event)
+            }
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                if (down) togglePlay()
                 return true
             }
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (down) seekBy(30); return true }
+            KeyEvent.KEYCODE_MEDIA_REWIND -> { if (down) seekBy(-30); return true }
         }
-        return playerView.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
+        if (!ui.visible) {
+            // Controls hidden: arrows skip (physical left = back), OK pauses — like Netflix on TV.
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> { if (down) seekBy(-10); return true }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> { if (down) seekBy(10); return true }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    if (down) { togglePlay(); show() }
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_MENU -> {
+                    if (down) show()
+                    return true
+                }
+            }
+        } else {
+            poke()
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onPause() {
@@ -451,7 +566,8 @@ class PlayerActivity : ComponentActivity() {
             FiveBrozTheme {
                 Box(Modifier.fillMaxSize()) {
                     val title = if (args.label.isNotBlank()) "${args.name} — ${args.label}" else args.name
-                    if (controlsVisible || overlay !is Overlay.None) {
+                    if (overlay is Overlay.None) PlayerControls(ui, title, isTv, this@PlayerActivity)
+                    if (overlay !is Overlay.None) {
                         Box(
                             Modifier.fillMaxWidth()
                                 .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)))

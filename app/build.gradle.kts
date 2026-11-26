@@ -12,8 +12,8 @@ android {
         applicationId = "com.fivebroz.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "2.1.1"
+        versionCode = 15
+        versionName = "2.2"
     }
 
     // The keystore is committed; its password lives only in the CI secret
@@ -61,6 +61,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
 
     implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
     implementation("androidx.navigation:navigation-compose:2.9.0")

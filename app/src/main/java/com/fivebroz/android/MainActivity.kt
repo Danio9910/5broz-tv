@@ -3,6 +3,9 @@ package com.fivebroz.android
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -19,7 +22,13 @@ import com.fivebroz.android.ui.LocalIsTv
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
+        // Draw behind the status bar like native streaming apps; screens pad themselves.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.rgb(10, 10, 11)),
+        )
         Prefs.init(applicationContext)
         val isTv = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
             !packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)

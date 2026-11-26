@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Launch: ink background with the gold monogram, then hand over to the app. -->
+    <style name="Theme.FiveBroz.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/ink</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_fg</item>
+        <item name="postSplashScreenTheme">@style/Theme.FiveBroz</item>
+    </style>
     <style name="Theme.FiveBroz" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/ink</item>
-        <item name="android:statusBarColor">@color/ink</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@color/ink</item>
         <item name="android:colorAccent">@color/gold</item>
     </style>

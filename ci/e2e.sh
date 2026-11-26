@@ -32,6 +32,10 @@ tap_text() {
 adb logcat -c
 adb shell am start -n $PKG/.MainActivity
 sleep 20; shot 1-home
+adb shell input swipe 160 500 160 150 400
+sleep 2; shot 1b-home-scrolled
+adb shell input swipe 160 150 160 600 300
+sleep 1
 # Find a well-known, released film through search.
 tap_text "بحث"
 sleep 3
@@ -50,6 +54,8 @@ tap_text "تشغيل"
 sleep 30; shot 3-player-30s
 sleep 45; shot 4-player-75s
 sleep 45; shot 5-player-120s
+adb shell input tap 320 160    # reveal the controls
+sleep 1; shot 6-controls
 echo "--- app log ---" > $OUT/logcat.txt
 adb logcat -d -s 5broz:V ExoPlayerImpl:V AndroidRuntime:E >> $OUT/logcat.txt
 grep -q "PLAYER READY" $OUT/logcat.txt && echo "E2E: PLAYER READY" || echo "E2E: player never became ready"

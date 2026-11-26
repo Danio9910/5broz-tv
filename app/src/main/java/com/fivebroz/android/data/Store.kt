@@ -35,7 +35,20 @@ object Prefs {
         get() = sp.getBoolean("pfamily", false)
         set(v) = sp.edit().putBoolean("pfamily", v).apply()
 
+    var profileAvatar: String
+        get() = sp.getString("pavatar", "") ?: ""
+        set(v) = sp.edit().putString("pavatar", v).apply()
+
+    var profileSymbol: String
+        get() = sp.getString("psymbol", "") ?: ""
+        set(v) = sp.edit().putString("psymbol", v).apply()
+
+    /** The chosen profile, for drawing its avatar. */
+    fun current() = Profile(profileId ?: "", profileName, profileAvatar, profileSymbol, profileKids, profileFamily, null)
+
     fun choose(p: Profile) {
+        profileAvatar = p.avatar ?: ""
+        profileSymbol = p.symbol ?: ""
         profileId = p.id
         profileName = p.name
         profileKids = p.isKids
