@@ -143,6 +143,7 @@ private fun PhoneHome(
             if (home == null) {
                 item("sk") { SkeletonRows(g) }
             } else {
+                item("health") { HealthNotice(g) }
                 item("join") { JoinChip(g) }
                 if (resume.isNotEmpty()) item("resume") { ContinueRow(resume, onOpen, g) }
                 if (home.top10.isNotEmpty()) item("top10") {
@@ -159,6 +160,37 @@ private fun PhoneHome(
 }
 
 private val RectShape = androidx.compose.ui.graphics.RectangleShape
+
+/** A quiet one-line notice when part of the platform needs attention. */
+private var healthShown = false
+
+@Composable
+fun HealthNotice(g: Dp) {
+    var msg by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        if (healthShown) return@LaunchedEffect
+        val h = Api.health() ?: return@LaunchedEffect
+        msg = when {
+            !h.catalog -> "قائمة الأفلام لا تستجيب الآن — حاول بعد قليل."
+            !h.torrents && !h.debridActive -> "مصادر التشغيل لا تستجيب الآن — حاول بعد قليل."
+            !h.debridActive -> "اشتراك Real-Debrid غير مفعّل — التشغيل يعمل عبر التورنت (أبطأ قليلاً عند البدء)."
+            h.daysLeft != null && h.daysLeft <= 5 -> "اشتراك Real-Debrid ينتهي خلال ${h.daysLeft} أيام."
+            else -> null
+        }
+    }
+    val m = msg ?: return
+    Row(
+        Modifier.padding(horizontal = g, vertical = 6.dp).fillMaxWidth()
+            .background(C.Gold.copy(alpha = 0.12f), androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(m, color = C.Paper.copy(alpha = 0.9f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Focusable({ healthShown = true; msg = null }, shape = CircleShape, lift = 1f, ring = false) {
+            Text("✕", Modifier.padding(8.dp), color = C.Muted)
+        }
+    }
+}
 
 @Composable
 private fun JoinChip(g: Dp) {
@@ -353,6 +385,7 @@ private fun TvHome(
             }
             CompositionLocalProvider(LocalBringIntoViewSpec provides pinTop) {
                 LazyColumn(Modifier.fillMaxWidth().weight(1f), contentPadding = PaddingValues(bottom = 200.dp)) {
+                    item("health") { HealthNotice(g) }
                     var firstDone = false
                     fun claim(): FocusRequester? = if (!firstDone) { firstDone = true; first } else null
 

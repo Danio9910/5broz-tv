@@ -30,8 +30,13 @@ object Parties {
     private val headers = mapOf("apikey" to KEY, "Authorization" to "Bearer $KEY")
     private fun q(s: String) = URLEncoder.encode(s, "UTF-8")
 
-    private fun parse(o: JSONObject): Party? = Party(
-        id = o.str("id") ?: return null,
+    private fun parse(o: JSONObject): Party? {
+        val id = o.str("id") ?: return null
+        return parseWith(id, o)
+    }
+
+    private fun parseWith(id: String, o: JSONObject): Party = Party(
+        id = id,
         code = o.str("code") ?: "",
         host = o.str("host"),
         metaId = o.str("meta_id"),

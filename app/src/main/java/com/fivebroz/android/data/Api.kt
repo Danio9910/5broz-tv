@@ -169,6 +169,22 @@ object Api {
     fun subtitleProxy(url: String, offsetSec: Float = 0f) =
         "$B/api/sub?u=${enc(url)}" + if (offsetSec != 0f) "&o=$offsetSec" else ""
 
+    data class Health(val ok: Boolean, val catalog: Boolean, val torrents: Boolean, val debridActive: Boolean, val daysLeft: Int?)
+
+    suspend fun health(): Health? = try {
+        val o = Net.getObj("$B/api/health")
+        val d = o.optJSONObject("debrid")
+        Health(
+            ok = o.optBoolean("ok", true),
+            catalog = o.optBoolean("catalog", true),
+            torrents = o.optBoolean("torrents", true),
+            debridActive = d?.optBoolean("active", false) ?: false,
+            daysLeft = d?.let { if (it.isNull("daysLeft")) null else it.optInt("daysLeft") },
+        )
+    } catch (_: Exception) {
+        null
+    }
+
     data class AppVersion(val code: Int, val name: String, val url: String, val notes: String?)
 
     suspend fun appVersion(): AppVersion? = try {
