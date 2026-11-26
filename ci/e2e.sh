@@ -61,8 +61,20 @@ sleep 45; shot 5-player-120s
 PS=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1)
 adb shell input tap $(( ${PS#*x} / 2 )) $(( ${PS%x*} / 2 ))   # landscape: reveal the controls
 sleep 1; shot 6-controls
-tap_text "غرفة مشاهدة"
+# Find the button while the controls are up, wait for them to auto-hide,
+# then reveal and tap it straight away.
+adb shell uiautomator dump /sdcard/ui.xml > /dev/null; adb pull /sdcard/ui.xml /tmp/ui.xml > /dev/null
+PXY=$(python3 ci/find.py /tmp/ui.xml "غرفة مشاهدة"); echo "party button -> $PXY"
+SXY=$(python3 ci/find.py /tmp/ui.xml "الترجمة")
+sleep 7
+adb shell input tap $(( ${PS#*x} / 2 )) $(( ${PS%x*} / 2 )); sleep 0.6
+[ -n "$PXY" ] && adb shell input tap $PXY
 sleep 8; shot 6b-party
+adb shell input keyevent 4; sleep 7
+adb shell input tap $(( ${PS#*x} / 2 )) $(( ${PS%x*} / 2 )); sleep 0.6
+[ -n "$SXY" ] && adb shell input tap $SXY
+sleep 2; shot 6c-subtitles
+adb shell input keyevent 4; sleep 1
 # Profiles: open the picker, manage mode and the new-profile editor (nothing is saved).
 adb shell am force-stop $PKG; sleep 2
 adb shell am start -n $PKG/.MainActivity; sleep 12
