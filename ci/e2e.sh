@@ -107,6 +107,36 @@ adb shell input text QATEST; sleep 1
 adb shell input keyevent 66
 sleep 90; shot 12-guest
 adb logcat -d -s 5broz:V | grep -E "party|READY" > $OUT/party.txt; echo end >> $OUT/party.txt
+# Update: the download must keep going with the screen OFF.
+adb shell am force-stop $PKG; sleep 1
+cat > /tmp/5broz-upd.xml <<XML
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <boolean name="gate" value="true" />
+    <string name="pid">guest</string>
+    <string name="pname">اختبار</string>
+    <boolean name="test_update" value="true" />
+</map>
+XML
+adb push /tmp/5broz-upd.xml /data/local/tmp/5broz-upd.xml
+adb shell "cat /data/local/tmp/5broz-upd.xml | run-as $PKG sh -c 'cat > shared_prefs/5broz.xml'"
+adb emu network speed 6000        # ~0.75 MB/s, so most of the download happens with the screen off
+adb logcat -c
+adb shell am start -n $PKG/.MainActivity; sleep 14; shot 13-update-offer
+tap_text "تحديث الآن"
+sleep 6; shot 13b-downloading
+adb shell input keyevent 26       # screen off
+sleep 100
+adb shell input keyevent 224      # wake
+sleep 2; adb shell input keyevent 82; sleep 3
+shot 14-after-screen-off
+adb emu network speed full
+{
+  echo "--- files ---"
+  adb shell ls -l /sdcard/Android/data/$PKG/files/Download/
+  echo "--- log ---"
+  adb logcat -d -s 5broz:V | grep -i update
+} > $OUT/update.txt 2>&1
 echo "--- app log ---" > $OUT/logcat.txt
 adb logcat -d -s 5broz:V ExoPlayerImpl:V AndroidRuntime:E >> $OUT/logcat.txt
 grep -q "PLAYER READY" $OUT/logcat.txt && echo "E2E: PLAYER READY" || echo "E2E: player never became ready"

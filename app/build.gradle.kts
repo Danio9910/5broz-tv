@@ -12,8 +12,8 @@ android {
         applicationId = "com.fivebroz.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 22
-        versionName = "2.7"
+        versionCode = 23
+        versionName = "2.7.1"
     }
 
     // The keystore is committed; its password lives only in the CI secret
@@ -49,6 +49,14 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+}
+
+// Test (debug) builds report version 1, so the emulator test always gets offered
+// the published update and can exercise the real download flow.
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { v ->
+        v.outputs.forEach { it.versionCode.set(1) }
     }
 }
 
