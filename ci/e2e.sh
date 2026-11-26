@@ -120,23 +120,31 @@ cat > /tmp/5broz-upd.xml <<XML
 XML
 adb push /tmp/5broz-upd.xml /data/local/tmp/5broz-upd.xml
 adb shell "cat /data/local/tmp/5broz-upd.xml | run-as $PKG sh -c 'cat > shared_prefs/5broz.xml'"
-adb emu network speed 6000        # ~0.75 MB/s, so most of the download happens with the screen off
+adb emu network speed 1500        # ~190 KB/s: the download takes minutes, so it must run while the screen is off
 adb logcat -c
 adb shell am start -n $PKG/.MainActivity; sleep 14; shot 13-update-offer
 tap_text "تحديث الآن"
 sleep 6; shot 13b-downloading
-adb shell input keyevent 26       # screen off
-sleep 100
-adb shell input keyevent 224      # wake
-sleep 2; adb shell input keyevent 82; sleep 3
-shot 14-after-screen-off
+DL=/sdcard/Android/data/$PKG/files/Download
+size() { adb shell "du -k $DL 2>/dev/null | tail -1" | awk '{print $1}'; }
+adb shell input keyevent 26       # screen OFF
+sleep 3
+A=$(size); echo "screen off, downloaded so far: ${A} KB" | tee $OUT/update.txt
+sleep 90
+B=$(size); echo "still off 90s later: ${B} KB" | tee -a $OUT/update.txt
+adb shell dumpsys power | grep -E "mWakefulness=|Display Power" | tee -a $OUT/update.txt
 adb emu network speed full
+sleep 40
+C=$(size); echo "after network restored (screen still off): ${C} KB" | tee -a $OUT/update.txt
+adb shell input keyevent 224      # wake
+sleep 2; adb shell input keyevent 82; sleep 4
+shot 14-after-screen-off
 {
   echo "--- files ---"
-  adb shell ls -l /sdcard/Android/data/$PKG/files/Download/
+  adb shell ls -l $DL/
   echo "--- log ---"
   adb logcat -d -s 5broz:V | grep -i update
-} > $OUT/update.txt 2>&1
+} >> $OUT/update.txt 2>&1
 echo "--- app log ---" > $OUT/logcat.txt
 adb logcat -d -s 5broz:V ExoPlayerImpl:V AndroidRuntime:E >> $OUT/logcat.txt
 grep -q "PLAYER READY" $OUT/logcat.txt && echo "E2E: PLAYER READY" || echo "E2E: player never became ready"
