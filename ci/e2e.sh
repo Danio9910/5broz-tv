@@ -61,18 +61,16 @@ sleep 45; shot 5-player-120s
 PS=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1)
 adb shell input tap $(( ${PS#*x} / 2 )) $(( ${PS%x*} / 2 ))   # landscape: reveal the controls
 sleep 1; shot 6-controls
-# Find the button while the controls are up, wait for them to auto-hide,
-# then reveal and tap it straight away.
-adb shell uiautomator dump /sdcard/ui.xml > /dev/null; adb pull /sdcard/ui.xml /tmp/ui.xml > /dev/null
-PXY=$(python3 ci/find.py /tmp/ui.xml "غرفة مشاهدة"); echo "party button -> $PXY"
-SXY=$(python3 ci/find.py /tmp/ui.xml "الترجمة")
-sleep 7
-adb shell input tap $(( ${PS#*x} / 2 )) $(( ${PS%x*} / 2 )); sleep 0.6
-[ -n "$PXY" ] && adb shell input tap $PXY
+# Pause first (still screen = the UI tree can be read; controls stay up while paused).
+CX=$(( ${PS#*x} / 2 )); CY=$(( ${PS%x*} / 2 ))
+sleep 6
+adb shell input tap $CX $CY; sleep 0.7      # show controls
+adb shell input tap $CX $CY; sleep 2        # big centre button = pause
+shot 6a-paused
+tap_text "غرفة مشاهدة"
 sleep 8; shot 6b-party
-adb shell input keyevent 4; sleep 7
-adb shell input tap $(( ${PS#*x} / 2 )) $(( ${PS%x*} / 2 )); sleep 0.6
-[ -n "$SXY" ] && adb shell input tap $SXY
+adb shell input keyevent 4; sleep 2
+tap_text "الترجمة"
 sleep 2; shot 6c-subtitles
 adb shell input keyevent 4; sleep 1
 # Profiles: open the picker, manage mode and the new-profile editor (nothing is saved).
