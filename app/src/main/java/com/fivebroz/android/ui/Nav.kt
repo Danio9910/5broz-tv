@@ -112,7 +112,11 @@ enum class Tab(val label: String, val icon: ImageVector) {
 
 /** Horizontal page margin. On TV the side rail takes the first 80dp. */
 @Composable
-fun gutter(): Dp = if (LocalIsTv.current) 40.dp else 16.dp
+fun gutter(): Dp = when {
+    LocalIsTv.current -> 40.dp
+    LocalIsTablet.current -> 28.dp
+    else -> 16.dp
+}
 
 private val RAIL = 80.dp
 

@@ -166,7 +166,8 @@ object Api {
     }
 
     /** Subtitles are proxied through the site, which converts SRT to WebVTT. */
-    fun subtitleProxy(url: String) = "$B/api/sub?u=${enc(url)}"
+    fun subtitleProxy(url: String, offsetSec: Float = 0f) =
+        "$B/api/sub?u=${enc(url)}" + if (offsetSec != 0f) "&o=$offsetSec" else ""
 
     data class AppVersion(val code: Int, val name: String, val url: String, val notes: String?)
 

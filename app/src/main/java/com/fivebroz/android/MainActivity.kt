@@ -18,6 +18,7 @@ import com.fivebroz.android.data.Prefs
 import com.fivebroz.android.ui.AppNav
 import com.fivebroz.android.ui.C
 import com.fivebroz.android.ui.FiveBrozTheme
+import com.fivebroz.android.ui.LocalIsTablet
 import com.fivebroz.android.ui.LocalIsTv
 
 class MainActivity : ComponentActivity() {
@@ -38,6 +39,7 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(
                 LocalLayoutDirection provides LayoutDirection.Rtl,
                 LocalIsTv provides isTv,
+                LocalIsTablet provides (!isTv && resources.configuration.smallestScreenWidthDp >= 600),
             ) {
                 FiveBrozTheme {
                     Box(Modifier.fillMaxSize().background(C.Ink950)) {

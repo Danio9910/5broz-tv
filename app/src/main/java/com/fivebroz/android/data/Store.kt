@@ -56,8 +56,18 @@ object Prefs {
     }
 
     fun clearProfile() {
-        sp.edit().remove("pid").remove("pname").remove("pkids").remove("pfamily").apply()
+        sp.edit().remove("pid").remove("pname").remove("pkids").remove("pfamily")
+            .remove("pavatar").remove("psymbol").apply()
     }
+
+    // Per-profile player preferences.
+    private fun k(name: String) = "${profileId ?: "x"}.$name"
+    var subLang: String // "ar", "en" or "off"
+        get() = sp.getString(k("subLang"), "ar") ?: "ar"
+        set(v) = sp.edit().putString(k("subLang"), v).apply()
+    var subScale: Float
+        get() = sp.getFloat(k("subScale"), 1.1f)
+        set(v) = sp.edit().putFloat(k("subScale"), v).apply()
 }
 
 data class Profile(
@@ -112,6 +122,43 @@ object Db {
             family = o.bool("family"),
             pin = o.str("pin"),
         )
+    }
+
+    suspend fun createProfile(p: Profile): Profile? = try {
+        val body = JSONObject()
+            .put("name", p.name)
+            .put("avatar", p.avatar ?: JSONObject.NULL)
+            .put("symbol", p.symbol ?: JSONObject.NULL)
+            .put("is_kids", p.isKids)
+            .put("family", p.family)
+            .put("pin", p.pin ?: JSONObject.NULL)
+        val out = JSONArray(
+            Net.send("POST", "$URL/profiles", JSONArray().put(body).toString(), headers + mapOf("Prefer" to "return=representation")),
+        )
+        out.optJSONObject(0)?.str("id")?.let { p.copy(id = it) }
+    } catch (_: Exception) {
+        null
+    }
+
+    suspend fun updateProfile(p: Profile): Boolean = try {
+        val body = JSONObject()
+            .put("name", p.name)
+            .put("avatar", p.avatar ?: JSONObject.NULL)
+            .put("symbol", p.symbol ?: JSONObject.NULL)
+            .put("is_kids", p.isKids)
+            .put("family", p.family)
+            .put("pin", p.pin ?: JSONObject.NULL)
+        Net.send("PATCH", "$URL/profiles?id=eq.${q(p.id)}", body.toString(), headers + mapOf("Prefer" to "return=minimal"))
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    suspend fun deleteProfile(id: String): Boolean = try {
+        Net.send("DELETE", "$URL/profiles?id=eq.${q(id)}", null, headers)
+        true
+    } catch (_: Exception) {
+        false
     }
 
     // ---------- watch progress ----------

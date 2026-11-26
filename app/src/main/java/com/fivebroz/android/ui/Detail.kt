@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -247,7 +248,8 @@ private fun PhoneDetail(
     val g = gutter()
     var pickSeason by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
-    val headH = (LocalConfiguration.current.screenWidthDp * 0.66f).dp
+    val tablet = LocalIsTablet.current
+    val headH = (LocalConfiguration.current.screenWidthDp * if (tablet) 0.46f else 0.66f).dp
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp)) {
@@ -262,7 +264,7 @@ private fun PhoneDetail(
                 }
             }
             item("info") {
-                Column(Modifier.padding(horizontal = g)) {
+                Column(Modifier.padding(horizontal = g).widthIn(max = 760.dp)) {
                     Text(d.base.name, style = MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp, lineHeight = 36.sp))
                     VSpace(8.dp)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

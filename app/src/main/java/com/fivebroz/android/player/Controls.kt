@@ -85,6 +85,8 @@ interface PlayerActions {
     fun poke()
     fun subtitleOptions(): List<SubOption>
     fun setSubtitleSize(scale: Float)
+    val subtitleOffset: Float
+    fun shiftSubtitles(deltaSec: Float)
     fun otherSource()
     val hasNextEpisode: Boolean
     fun nextEpisode()
@@ -321,6 +323,18 @@ private fun SubtitlePanel(ui: PlayerUi, a: PlayerActions) {
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
+            }
+            VSpace(14.dp)
+            Text("توقيت الترجمة", color = C.Muted, style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Pill("أبكر ٠٫٥") { a.shiftSubtitles(-0.5f) }
+                Text(
+                    (if (a.subtitleOffset > 0) "+" else "") + "%.1f ث".format(a.subtitleOffset),
+                    color = C.Paper,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.widthIn(min = 56.dp),
+                )
+                Pill("أبطأ ٠٫٥") { a.shiftSubtitles(0.5f) }
             }
             VSpace(14.dp)
             Text("حجم الخط", color = C.Muted, style = MaterialTheme.typography.labelLarge)

@@ -121,7 +121,11 @@ private fun PhoneHome(
 ) {
     val g = gutter()
     val list = rememberLazyListState()
-    val heroH = (LocalConfiguration.current.screenWidthDp * 1.32f).dp
+    val tablet = LocalIsTablet.current
+    val cfg = LocalConfiguration.current
+    // Phones get a tall poster; tablets a wide cinematic banner.
+    val heroH = if (tablet) (cfg.screenWidthDp * 0.52f).coerceAtMost(cfg.screenHeightDp * 0.72f).dp
+    else (cfg.screenWidthDp * 1.32f).dp
     val heroPx = with(LocalDensity.current) { heroH.toPx() }
     val solid by remember {
         derivedStateOf {
@@ -134,7 +138,7 @@ private fun PhoneHome(
         LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
             item("hero") {
                 if (home == null) Skeleton(Modifier.fillMaxWidth().height(heroH), RectShape)
-                else if (home.heroes.isNotEmpty()) PhoneHero(home.heroes, heroH, onOpen)
+                else if (home.heroes.isNotEmpty()) PhoneHero(home.heroes, heroH, tablet, onOpen)
             }
             if (home == null) {
                 item("sk") { SkeletonRows(g) }
@@ -157,7 +161,7 @@ private val RectShape = androidx.compose.ui.graphics.RectangleShape
 
 /** Swipeable poster hero — tall artwork, title and one clear action, centred. */
 @Composable
-private fun PhoneHero(items: List<Preview>, height: Dp, onOpen: (Preview) -> Unit) {
+private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (Preview) -> Unit) {
     val pager = rememberPagerState { items.size }
     LaunchedEffect(pager, items) {
         while (items.size > 1) {
@@ -169,7 +173,7 @@ private fun PhoneHero(items: List<Preview>, height: Dp, onOpen: (Preview) -> Uni
         HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
             val it = items[page]
             Box(Modifier.fillMaxSize()) {
-                Img(it.poster ?: it.background, Modifier.fillMaxSize(), it.name)
+                Img(if (wide) it.background ?: it.poster else it.poster ?: it.background, Modifier.fillMaxSize(), it.name)
                 Box(
                     Modifier.fillMaxSize().background(
                         Brush.verticalGradient(

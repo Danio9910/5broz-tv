@@ -54,6 +54,7 @@ fun Field(
     modifier: Modifier = Modifier,
     secret: Boolean = false,
     numeric: Boolean = false,
+    plainText: Boolean = false, // names: any script, emoji, symbols
     focusRequester: FocusRequester? = null,
     center: Boolean = true,
 ) {
@@ -90,7 +91,11 @@ fun Field(
             ),
             visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(
-                keyboardType = if (numeric) KeyboardType.NumberPassword else KeyboardType.Password,
+                keyboardType = when {
+                    numeric -> KeyboardType.NumberPassword
+                    plainText -> KeyboardType.Text
+                    else -> KeyboardType.Password
+                },
                 imeAction = ImeAction.Done,
                 autoCorrectEnabled = false,
             ),

@@ -85,10 +85,14 @@ jobs:
           prerelease: true
           files: engine-test.log
 
-  # The real app in an Android emulator, driven like a user, with screenshots.
+  # The real app in Android emulators (phone + tablet), driven like a user, with screenshots.
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [pixel_5, pixel_c]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -109,17 +113,18 @@ jobs:
           api-level: 33
           arch: x86_64
           target: google_apis
+          profile: ${{ matrix.device }}
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: ./ci/e2e.sh
+          script: OUT=e2e-${{ matrix.device }} ./ci/e2e.sh
       - name: Publish screenshots
         if: always()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ci-e2e
-          name: CI end-to-end screenshots
+          tag_name: ci-e2e-${{ matrix.device }}
+          name: CI screenshots (${{ matrix.device }})
           prerelease: true
-          files: e2e/*
+          files: e2e-${{ matrix.device }}/*
 
   # Same app on an Android TV emulator, driven with D-pad keys.
   e2e-tv:

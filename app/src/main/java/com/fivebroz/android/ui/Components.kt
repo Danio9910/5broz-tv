@@ -283,7 +283,11 @@ fun RankedPoster(rank: Int, item: Preview, width: Dp, onClick: () -> Unit, onFoc
 
 /** Card width that suits the screen. */
 @Composable
-fun posterWidth(): Dp = if (LocalIsTv.current) 128.dp else 108.dp
+fun posterWidth(): Dp = when {
+    LocalIsTv.current -> 128.dp
+    LocalIsTablet.current -> 138.dp
+    else -> 108.dp
+}
 
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {

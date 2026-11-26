@@ -131,6 +131,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     private var overlay by mutableStateOf<Overlay>(Overlay.Loading("جارٍ تجهيز أفضل مصدر…"))
     private val ui = PlayerUi()
     private var subScale = 1.1f
+    private var currentUrl: String? = null
+    private var subOffset by mutableStateOf(0f)
 
     private var candidates: List<Stream> = emptyList()
     private var torrentJob: Job? = null
@@ -175,7 +177,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                         ResourcesCompat.getFont(this@PlayerActivity, R.font.cairo),
                     ),
                 )
-                setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * if (isTv) 1.1f else 1.2f)
+                setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * com.fivebroz.android.data.Prefs.subScale)
             }
         }
         root.addView(playerView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -249,6 +251,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         val off = p.trackSelectionParameters.disabledTrackTypes.contains(MC.TRACK_TYPE_TEXT)
         val out = mutableListOf(
             SubOption("بدون ترجمة", off) {
+                com.fivebroz.android.data.Prefs.subLang = "off"
                 p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                     .setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, true).build()
             },
@@ -257,6 +260,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             val f = g.getTrackFormat(0)
             val label = f.label ?: f.language?.let { if (it.startsWith("ar")) "العربية" else it } ?: "ترجمة ${i + 1}"
             out += SubOption(label, !off && g.isSelected) {
+                com.fivebroz.android.data.Prefs.subLang = if (f.language?.startsWith("en") == true) "en" else "ar"
                 p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                     .setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, false)
                     .setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, 0))
@@ -266,7 +270,23 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         return out
     }
 
+    override val subtitleOffset: Float get() = subOffset
+
+    /** Rebuild the subtitles with a time shift, keeping the video where it is. */
+    override fun shiftSubtitles(deltaSec: Float) {
+        subOffset = ((subOffset + deltaSec) * 10).toInt() / 10f
+        val p = player ?: return
+        val url = currentUrl ?: return
+        val pos = p.currentPosition
+        val playing = p.playWhenReady
+        p.setMediaItem(buildItem(url), pos)
+        p.playWhenReady = playing
+        p.prepare()
+        poke()
+    }
+
     override fun setSubtitleSize(scale: Float) {
+        com.fivebroz.android.data.Prefs.subScale = scale
         subScale = scale
         playerView.subtitleView?.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * scale)
     }
@@ -290,8 +310,14 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         val http = OkHttpDataSource.Factory(
             Net.client.newBuilder().readTimeout(150, java.util.concurrent.TimeUnit.SECONDS).build(),
         )
+        // Start with the subtitle choice this profile made last time.
+        val lang = com.fivebroz.android.data.Prefs.subLang
         val selector = DefaultTrackSelector(this).apply {
-            setParameters(buildUponParameters().setPreferredTextLanguage("ar"))
+            setParameters(
+                buildUponParameters()
+                    .setPreferredTextLanguage(if (lang == "en") "en" else "ar")
+                    .setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, lang == "off"),
+            )
         }
         return ExoPlayer.Builder(this)
             .setRenderersFactory(
@@ -405,26 +431,29 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         lifecycleScope.launch(Dispatchers.IO) { engine.close() }
     }
 
-    private fun playUrl(url: String, positionSec: Long) {
-        player?.release()
-        val p = buildPlayer()
-        player = p
-        playerView.player = p
-
+    private fun buildItem(url: String): MediaItem {
         val arabic = setOf("ara", "ar", "arabic", "العربية")
         val chosen = subs.filter { it.lang.lowercase() in arabic }.take(4) +
             subs.filter { it.lang.lowercase() in setOf("eng", "en", "english") }.take(2)
         val subConfigs = chosen.mapIndexed { i, s ->
             val ar = s.lang.lowercase() in arabic
-            MediaItem.SubtitleConfiguration.Builder(Uri.parse(Api.subtitleProxy(s.url)))
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(Api.subtitleProxy(s.url, subOffset)))
                 .setMimeType(MimeTypes.TEXT_VTT)
                 .setLanguage(if (ar) "ar" else "en")
                 .setLabel(if (ar) "العربية ${i + 1}" else "English")
                 .setSelectionFlags(if (i == 0 && ar) MC.SELECTION_FLAG_DEFAULT else 0)
                 .build()
         }
-        val item = MediaItem.Builder().setUri(url).setSubtitleConfigurations(subConfigs).build()
-        p.setMediaItem(item)
+        return MediaItem.Builder().setUri(url).setSubtitleConfigurations(subConfigs).build()
+    }
+
+    private fun playUrl(url: String, positionSec: Long) {
+        player?.release()
+        val p = buildPlayer()
+        player = p
+        playerView.player = p
+        currentUrl = url
+        p.setMediaItem(buildItem(url))
         if (positionSec > 30) p.seekTo(positionSec * 1000)
         p.playWhenReady = true
         p.prepare()

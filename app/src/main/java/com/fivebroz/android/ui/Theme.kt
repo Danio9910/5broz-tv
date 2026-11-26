@@ -47,6 +47,9 @@ val Cormorant = FontFamily(cormorant(500), cormorant(600))
 /** Whether we are running on a television (D-pad, 10-foot UI). */
 val LocalIsTv = staticCompositionLocalOf { false }
 
+/** Touch device with a large screen (tablet / foldable open). */
+val LocalIsTablet = staticCompositionLocalOf { false }
+
 @Composable
 fun FiveBrozTheme(content: @Composable () -> Unit) {
     val base = TextStyle(fontFamily = Cairo, color = C.Paper)
