@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -26,12 +27,14 @@ object C {
     val Danger = Color(0xFFE07A6B)
 }
 
+@OptIn(ExperimentalTextApi::class)
 private fun cairo(w: Int) = Font(
     R.font.cairo,
     weight = FontWeight(w),
     variationSettings = FontVariation.Settings(FontVariation.weight(w)),
 )
 
+@OptIn(ExperimentalTextApi::class)
 private fun cormorant(w: Int) = Font(
     R.font.cormorant,
     weight = FontWeight(w),
