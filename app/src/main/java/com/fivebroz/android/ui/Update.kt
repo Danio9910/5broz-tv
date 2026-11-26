@@ -139,7 +139,12 @@ fun UpdateCheck() {
         if (BuildConfig.DEBUG && !ctx.getSharedPreferences("5broz", Context.MODE_PRIVATE).getBoolean("test_update", false)) {
             return@LaunchedEffect
         }
-        val v = Api.appVersion() ?: return@LaunchedEffect
+        var v = Api.appVersion() ?: return@LaunchedEffect
+        if (BuildConfig.DEBUG) {
+            // The emulator test can point the download at a deliberately slow file.
+            ctx.getSharedPreferences("5broz", Context.MODE_PRIVATE).getString("test_update_url", null)
+                ?.let { v = v.copy(url = it) }
+        }
         if (v.code > Updater.installedCode(ctx) && v.url.isNotBlank()) {
             offer = v
             state = Updater.state(ctx, v.code) // a download may already be running or finished

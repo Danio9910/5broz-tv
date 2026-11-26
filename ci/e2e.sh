@@ -116,11 +116,13 @@ cat > /tmp/5broz-upd.xml <<XML
     <string name="pid">guest</string>
     <string name="pname">اختبار</string>
     <boolean name="test_update" value="true" />
+    <string name="test_update_url">https://httpbin.org/drip?duration=150&amp;numbytes=3000000&amp;code=200</string>
 </map>
 XML
 adb push /tmp/5broz-upd.xml /data/local/tmp/5broz-upd.xml
 adb shell "cat /data/local/tmp/5broz-upd.xml | run-as $PKG sh -c 'cat > shared_prefs/5broz.xml'"
-adb emu network speed 1500        # ~190 KB/s: the download takes minutes, so it must run while the screen is off
+# The test build downloads a 3 MB file that the server drips out over 150 s,
+# so most of it can only arrive while the screen is off.
 adb logcat -c
 adb shell am start -n $PKG/.MainActivity; sleep 14; shot 13-update-offer
 tap_text "تحديث الآن"
@@ -133,9 +135,8 @@ A=$(size); echo "screen off, downloaded so far: ${A} KB" | tee $OUT/update.txt
 sleep 90
 B=$(size); echo "still off 90s later: ${B} KB" | tee -a $OUT/update.txt
 adb shell dumpsys power | grep -E "mWakefulness=|Display Power" | tee -a $OUT/update.txt
-adb emu network speed full
-sleep 40
-C=$(size); echo "after network restored (screen still off): ${C} KB" | tee -a $OUT/update.txt
+sleep 75
+C=$(size); echo "still off, 165s in: ${C} KB" | tee -a $OUT/update.txt
 adb shell input keyevent 224      # wake
 sleep 2; adb shell input keyevent 82; sleep 4
 shot 14-after-screen-off
