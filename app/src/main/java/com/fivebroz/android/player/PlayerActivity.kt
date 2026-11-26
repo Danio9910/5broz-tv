@@ -342,6 +342,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             partyId = p.id
             isHost = true
             ui.partyCode = p.code
+            android.util.Log.i("5broz", "party created code=${p.code}")
             ui.chatOpen = true
             startPartyLoops()
         }
@@ -381,7 +382,10 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                             val drift = if (party.isPlaying && party.updatedAt > 0)
                                 (System.currentTimeMillis() - party.updatedAt).coerceIn(0, 6000) / 1000.0 else 0.0
                             val target = party.positionSec + drift
-                            if (kotlin.math.abs(p.currentPosition / 1000.0 - target) > 3.0) p.seekTo((target * 1000).toLong())
+                            if (kotlin.math.abs(p.currentPosition / 1000.0 - target) > 3.0) {
+                                android.util.Log.i("5broz", "party sync: seek to ${target.toInt()}s (playing=${party.isPlaying})")
+                                p.seekTo((target * 1000).toLong())
+                            }
                             if (party.isPlaying && !p.isPlaying) p.play()
                             if (!party.isPlaying && p.isPlaying) p.pause()
                         }

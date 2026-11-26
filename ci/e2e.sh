@@ -59,6 +59,8 @@ sleep 45; shot 5-player-120s
 PS=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1)
 adb shell input tap $(( ${PS#*x} / 2 )) $(( ${PS%x*} / 2 ))   # landscape: reveal the controls
 sleep 1; shot 6-controls
+tap_text "غرفة مشاهدة"
+sleep 8; shot 6b-party
 # Profiles: open the picker, manage mode and the new-profile editor (nothing is saved).
 adb shell am force-stop $PKG; sleep 2
 adb shell am start -n $PKG/.MainActivity; sleep 12
@@ -89,6 +91,10 @@ tap_text "الليلة"
 sleep 6; shot 10-tonight
 tap_text "الرئيسية"; sleep 3
 tap_text "انضمام لغرفة مشاهدة"; sleep 2; shot 11-join
+adb shell input text QATEST; sleep 1
+adb shell input keyevent 66
+sleep 90; shot 12-guest
+adb logcat -d -s 5broz:V | grep -E "party|READY" > $OUT/party.txt; echo end >> $OUT/party.txt
 echo "--- app log ---" > $OUT/logcat.txt
 adb logcat -d -s 5broz:V ExoPlayerImpl:V AndroidRuntime:E >> $OUT/logcat.txt
 grep -q "PLAYER READY" $OUT/logcat.txt && echo "E2E: PLAYER READY" || echo "E2E: player never became ready"
