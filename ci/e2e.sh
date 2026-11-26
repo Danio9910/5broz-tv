@@ -6,6 +6,8 @@ mkdir -p $OUT
 exec > >(tee $OUT/run.txt) 2>&1
 set -x
 adb install -r app/build/outputs/apk/debug/app-debug.apk
+# Skip Android's one-time "Viewing full screen" notice (a real user sees it once).
+adb shell settings put secure immersive_mode_confirmations confirmed
 
 # Skip the access-code screen (code is a secret) by pre-seeding the app's settings.
 cat > /tmp/5broz.xml <<XML
