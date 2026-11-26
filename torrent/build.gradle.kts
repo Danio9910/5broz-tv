@@ -29,8 +29,12 @@ dependencies {
 val unpackNatives = tasks.register<Copy>("unpackNatives") {
     from(natives.map { zipTree(it) }) {
         include("**/*.so")
-        eachFile { path = name }
+        eachFile {
+            // Keep only the 64-bit x86 build (the CI machine).
+            if (!path.contains("x86_64") && !path.contains("amd64")) exclude() else path = name
+        }
     }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     includeEmptyDirs = false
     into(layout.buildDirectory.dir("natives"))
 }
