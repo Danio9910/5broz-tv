@@ -1,6 +1,8 @@
 package com.fivebroz.android.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +30,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -55,9 +58,17 @@ fun Field(
     center: Boolean = true,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val fr = if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier
+    val own = remember { FocusRequester() }
+    val req = focusRequester ?: own
+    val keyboard = LocalSoftwareKeyboardController.current
+    val fr = Modifier.focusRequester(req)
     Box(
         modifier
+            // Tapping anywhere on the box focuses the input and opens the keyboard.
+            .clickable(remember { MutableInteractionSource() }, indication = null) {
+                runCatching { req.requestFocus() }
+                keyboard?.show()
+            }
             .background(C.Ink800, RoundedCornerShape(12.dp))
             .border(1.dp, if (focused) C.Gold else C.Paper.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
             .padding(horizontal = 16.dp, vertical = 13.dp),

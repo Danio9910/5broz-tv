@@ -46,6 +46,7 @@ tap_text "تشغيل"
 sleep 30; shot 3-player-30s
 sleep 45; shot 4-player-75s
 sleep 45; shot 5-player-120s
-adb logcat -d -s 5broz:V ExoPlayerImpl:V AndroidRuntime:E > $OUT/logcat.txt
+echo "--- app log ---" > $OUT/logcat.txt
+adb logcat -d -s 5broz:V ExoPlayerImpl:V AndroidRuntime:E >> $OUT/logcat.txt
 grep -q "PLAYER READY" $OUT/logcat.txt && echo "E2E: PLAYER READY" || echo "E2E: player never became ready"
 exit 0
