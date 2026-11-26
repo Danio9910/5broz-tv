@@ -142,8 +142,8 @@ jobs:
       - name: Run app on Android TV emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 31
-          arch: x86_64
+          api-level: 30
+          arch: x86
           target: android-tv
           profile: tv_1080p
           disable-animations: true
