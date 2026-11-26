@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color as AColor
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -212,7 +213,10 @@ class PlayerActivity : ComponentActivity() {
             .build()
             .also { p ->
                 p.addListener(object : Player.Listener {
-                    override fun onPlayerError(error: PlaybackException) = tryNext()
+                    override fun onPlayerError(error: PlaybackException) {
+                        Log.w("5broz", "player error: ${error.errorCodeName} ${error.message}")
+                        tryNext()
+                    }
 
                     override fun onTracksChanged(tracks: Tracks) {
                         // A file whose audio this device can't decode plays silently — skip it.
@@ -225,6 +229,7 @@ class PlayerActivity : ComponentActivity() {
                     }
 
                     override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_READY) Log.i("5broz", "PLAYER READY pos=${p.currentPosition}")
                         if (state == Player.STATE_READY && overlay is Overlay.Loading) overlay = Overlay.None
                         if (state == Player.STATE_ENDED) onEnded()
                     }
@@ -249,6 +254,7 @@ class PlayerActivity : ComponentActivity() {
             candidates = (listOfNotNull(picked) + ranked)
                 .distinctBy { it.url ?: it.infoHash }
                 .take(6)
+            Log.i("5broz", "candidates=${candidates.size} torrents=${candidates.count { it.url == null }}")
             if (candidates.isEmpty()) {
                 overlay = Overlay.Failed("لم نجد مصدراً جاهزاً لهذا العنوان الآن.")
                 return@launch
@@ -285,14 +291,17 @@ class PlayerActivity : ComponentActivity() {
                     }
                 }
             }
+            Log.i("5broz", "torrent open $hash idx=${stream.fileIdx}")
             val local = try {
                 withContext(Dispatchers.IO) {
                     engine.close()
                     engine.open(TorrentEngine.magnet(hash, stream.trackers), stream.fileIdx)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w("5broz", "torrent failed: ${e.message}")
                 null
             }
+            Log.i("5broz", "torrent ready url=$local file=${engine.fileName} ${engine.status()}")
             ticker.cancel()
             if (local == null) tryNext() else {
                 overlay = Overlay.Loading("جارٍ التحميل المسبق…")
