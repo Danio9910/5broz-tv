@@ -43,7 +43,9 @@ fun ProfilesScreen(onChosen: () -> Unit) {
     val isTv = LocalIsTv.current
     val size = if (isTv) 112.dp else 92.dp
 
-    LaunchedEffect(Unit) {
+    var attempt by remember { mutableStateOf(0) }
+    LaunchedEffect(attempt) {
+        failed = false
         try {
             profiles = Db.profiles()
         } catch (_: Exception) {
@@ -62,7 +64,11 @@ fun ProfilesScreen(onChosen: () -> Unit) {
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         when {
-            failed -> Centered("تعذّر تحميل الملفات. تأكد من الاتصال بالإنترنت.")
+            failed -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("تعذّر تحميل الملفات. تأكد من الاتصال بالإنترنت.", color = C.Muted)
+                VSpace(16.dp)
+                GoldButton("إعادة المحاولة", { attempt++ })
+            }
             profiles == null -> Centered("…")
             else -> Column(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 32.dp),
