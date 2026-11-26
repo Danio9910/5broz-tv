@@ -78,14 +78,17 @@ PY
 sleep 8; shot 7-profiles
 tap_text "إدارة الملفات"
 sleep 2; shot 8-manage
-tap_text "ملف جديد"
+tap_text "+"
 sleep 3; shot 9-new-profile
 adb shell input keyevent 4; sleep 2
-# Tonight tab
+# Tonight tab (re-seed the test profile first — switching profiles cleared it)
 adb shell am force-stop $PKG; sleep 1
-adb shell am start -n $PKG/.MainActivity; sleep 10
+adb shell "cat /data/local/tmp/5broz.xml | run-as $PKG sh -c 'cat > shared_prefs/5broz.xml'"
+adb shell am start -n $PKG/.MainActivity; sleep 12
 tap_text "الليلة"
 sleep 6; shot 10-tonight
+tap_text "الرئيسية"; sleep 3
+tap_text "انضمام لغرفة مشاهدة"; sleep 2; shot 11-join
 echo "--- app log ---" > $OUT/logcat.txt
 adb logcat -d -s 5broz:V ExoPlayerImpl:V AndroidRuntime:E >> $OUT/logcat.txt
 grep -q "PLAYER READY" $OUT/logcat.txt && echo "E2E: PLAYER READY" || echo "E2E: player never became ready"

@@ -143,6 +143,7 @@ private fun PhoneHome(
             if (home == null) {
                 item("sk") { SkeletonRows(g) }
             } else {
+                item("join") { JoinChip(g) }
                 if (resume.isNotEmpty()) item("resume") { ContinueRow(resume, onOpen, g) }
                 if (home.top10.isNotEmpty()) item("top10") {
                     PosterRow(top10Title(kids, family), home.top10, onOpen, g, ranked = true)
@@ -158,6 +159,22 @@ private fun PhoneHome(
 }
 
 private val RectShape = androidx.compose.ui.graphics.RectangleShape
+
+@Composable
+private fun JoinChip(g: Dp) {
+    var open by remember { mutableStateOf(false) }
+    Row(Modifier.padding(horizontal = g, vertical = 6.dp)) {
+        Focusable({ open = true }, shape = androidx.compose.foundation.shape.RoundedCornerShape(50), lift = 1f, ring = false) {
+            Text(
+                "انضمام لغرفة مشاهدة",
+                Modifier.background(C.Paper.copy(alpha = 0.08f)).padding(horizontal = 14.dp, vertical = 7.dp),
+                color = C.Paper.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+    }
+    if (open) JoinPartyDialog { open = false }
+}
 
 /** Swipeable poster hero — tall artwork, title and one clear action, centred. */
 @Composable

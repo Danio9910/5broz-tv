@@ -171,3 +171,61 @@ fun CodeDialog(title: String, onDismiss: () -> Unit, onOk: () -> Unit) {
         }
     }
 }
+
+/** Enter a room code and jump into that watch party (works with rooms made on the website too). */
+@Composable
+fun JoinPartyDialog(onDismiss: () -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var code by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val fr = remember { FocusRequester() }
+    fun submit() {
+        if (code.length < 4 || busy) return
+        busy = true
+        error = ""
+        scope.launch {
+            val p = com.fivebroz.android.data.Parties.join(code)
+            if (p?.videoId == null || p.metaId == null) {
+                busy = false
+                error = "لا توجد غرفة بهذا الرمز."
+                return@launch
+            }
+            val type = if (p.type == "series") "series" else "movie"
+            val d = runCatching { Api.detail(type, p.metaId) }.getOrNull()
+            busy = false
+            onDismiss()
+            com.fivebroz.android.player.PlayerActivity.start(
+                ctx,
+                com.fivebroz.android.player.PlayArgs(
+                    type = type,
+                    metaId = d?.base?.id ?: p.metaId,
+                    name = d?.base?.name ?: "غرفة ${p.code}",
+                    poster = d?.base?.poster,
+                    videoId = p.videoId,
+                    label = "",
+                    partyId = p.id,
+                    partyHost = false,
+                ),
+            )
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.background(C.Ink900, RoundedCornerShape(18.dp)).padding(24.dp).widthIn(max = 340.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("انضمام لغرفة مشاهدة", style = MaterialTheme.typography.titleMedium)
+            Text("اكتب الرمز الذي أرسله المضيف", color = C.Muted, style = MaterialTheme.typography.bodyMedium)
+            Field(
+                code, { code = it.uppercase().filter { c -> c.isLetterOrDigit() }.take(6); error = "" }, "ABC123", ::submit,
+                Modifier.fillMaxWidth(), plainText = true, focusRequester = fr,
+            )
+            if (error.isNotEmpty()) Text(error, color = C.Danger, style = MaterialTheme.typography.bodyMedium)
+            GoldButton(if (busy) "…" else "دخول", ::submit, Modifier.fillMaxWidth(), fill = true)
+        }
+    }
+}

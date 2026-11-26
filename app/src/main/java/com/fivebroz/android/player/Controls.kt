@@ -72,6 +72,10 @@ class PlayerUi {
     var buffered by mutableLongStateOf(0L)
     var flash by mutableStateOf<String?>(null)
     var subsOpen by mutableStateOf(false)
+    var chatOpen by mutableStateOf(false)
+    var partyCode by mutableStateOf("")
+    var bubble by mutableStateOf<String?>(null)
+    val messages = androidx.compose.runtime.mutableStateListOf<com.fivebroz.android.data.PartyMessage>()
     var lastPoke = 0L
 }
 
@@ -90,6 +94,10 @@ interface PlayerActions {
     fun otherSource()
     val hasNextEpisode: Boolean
     fun nextEpisode()
+    val inParty: Boolean
+    val partyIsHost: Boolean
+    fun startParty()
+    fun sendChat(text: String)
 }
 
 private fun fmt(ms: Long): String {
@@ -190,7 +198,8 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Pill("الترجمة") { ui.subsOpen = true }
                                 Pill("مصدر آخر") { a.otherSource() }
-                                if (a.hasNextEpisode) Pill("الحلقة التالية") { a.nextEpisode() }
+                                if (a.hasNextEpisode && (!a.inParty || a.partyIsHost)) Pill("الحلقة التالية") { a.nextEpisode() }
+                                Pill(if (a.inParty) "الغرفة ${ui.partyCode}" else "غرفة مشاهدة") { a.startParty() }
                             }
                         }
                     }
@@ -198,7 +207,20 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
             }
         }
 
+        ui.bubble?.let { b ->
+            if (!ui.chatOpen) {
+                Text(
+                    b,
+                    Modifier.align(Alignment.BottomStart).padding(24.dp).widthIn(max = 420.dp)
+                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(14.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+                    color = C.Paper,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 3,
+                )
+            }
+        }
         if (ui.subsOpen) SubtitlePanel(ui, a)
+        if (ui.chatOpen) ChatPanel(ui, a)
     }
 }
 
@@ -343,6 +365,55 @@ private fun SubtitlePanel(ui: PlayerUi, a: PlayerActions) {
                     Pill(l) { a.setSubtitleSize(s); ui.subsOpen = false }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChatPanel(ui: PlayerUi, a: PlayerActions) {
+    var text by remember { mutableStateOf("") }
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f))
+            .pointerInput(Unit) { detectTapGestures { ui.chatOpen = false } },
+    ) {
+        Column(
+            Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(360.dp).background(C.Ink900)
+                .pointerInput(Unit) { detectTapGestures { } }
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("غرفة المشاهدة", style = MaterialTheme.typography.titleLarge)
+            if (ui.partyCode.isNotEmpty()) {
+                Text("الرمز", color = C.Muted, style = MaterialTheme.typography.labelMedium)
+                Text(
+                    ui.partyCode,
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        letterSpacing = 6.sp,
+                        textDirection = androidx.compose.ui.text.style.TextDirection.Ltr,
+                    ),
+                    color = C.Gold,
+                )
+                Text(
+                    if (a.partyIsHost) "شارك الرمز — من يدخل به يشاهد معك بنفس اللحظة." else "أنت تشاهد مع المضيف.",
+                    color = C.Muted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (ui.messages.isEmpty()) Text("لا رسائل بعد.", color = C.Muted, style = MaterialTheme.typography.bodyMedium)
+                ui.messages.forEach { m ->
+                    Column(Modifier.fillMaxWidth().background(C.Ink800, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        Text(m.sender ?: "ضيف", color = C.Gold, style = MaterialTheme.typography.labelMedium)
+                        Text(m.body, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            com.fivebroz.android.ui.Field(
+                text, { text = it.take(300) }, "اكتب رسالة…",
+                { a.sendChat(text); text = "" },
+                Modifier.fillMaxWidth(), plainText = true, center = false,
+            )
+            Pill("إرسال") { a.sendChat(text); text = "" }
         }
     }
 }

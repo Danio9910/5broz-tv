@@ -91,6 +91,8 @@ data class PlayArgs(
     val streamUrl: String? = null,
     val queueIds: ArrayList<String> = arrayListOf(),
     val queueLabels: ArrayList<String> = arrayListOf(),
+    val partyId: String? = null,
+    val partyHost: Boolean = false,
 )
 
 private sealed interface Overlay {
@@ -118,7 +120,9 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                     .putExtra("label", a.label)
                     .putExtra("streamUrl", a.streamUrl)
                     .putStringArrayListExtra("queueIds", a.queueIds)
-                    .putStringArrayListExtra("queueLabels", a.queueLabels),
+                    .putStringArrayListExtra("queueLabels", a.queueLabels)
+                    .putExtra("partyId", a.partyId)
+                    .putExtra("partyHost", a.partyHost),
             )
         }
     }
@@ -131,6 +135,12 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     private var overlay by mutableStateOf<Overlay>(Overlay.Loading("جارٍ تجهيز أفضل مصدر…"))
     private val ui = PlayerUi()
     private var subScale = 1.1f
+
+    // ---- watch party ----
+    private var partyId: String? = null
+    private var isHost = false
+    private var partyJob: Job? = null
+    private var lastSeenMsg: String? = null
     private var currentUrl: String? = null
     private var subOffset by mutableStateOf(0f)
 
@@ -155,7 +165,12 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             streamUrl = i.getStringExtra("streamUrl"),
             queueIds = i.getStringArrayListExtra("queueIds") ?: arrayListOf(),
             queueLabels = i.getStringArrayListExtra("queueLabels") ?: arrayListOf(),
+            partyId = i.getStringExtra("partyId"),
+            partyHost = i.getBooleanExtra("partyHost", false),
         )
+        partyId = args.partyId
+        isHost = args.partyHost
+        if (partyId != null) startPartyLoops()
         isTv = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -223,6 +238,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         if (p.isPlaying) p.pause() else p.play()
         ui.playing = !ui.playing
         poke()
+        beatNow()
     }
 
     override fun seekTo(ms: Long) {
@@ -230,6 +246,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         p.seekTo(ms.coerceIn(0, (p.duration.takeIf { it > 0 } ?: Long.MAX_VALUE)))
         ui.position = p.currentPosition
         poke()
+        beatNow()
     }
 
     private var flashJob: Job? = null
@@ -301,6 +318,101 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     override fun nextEpisode() {
         saveNow()
         playNext()
+    }
+
+    // ---------- watch party ----------
+
+    override val inParty: Boolean get() = partyId != null
+    override val partyIsHost: Boolean get() = isHost
+
+    override fun startParty() {
+        if (partyId != null) {
+            ui.chatOpen = true
+            return
+        }
+        lifecycleScope.launch {
+            val host = com.fivebroz.android.data.Prefs.profileName.ifBlank { "مضيف" }
+            val p = com.fivebroz.android.data.Parties.create(host, args.metaId, args.type, args.videoId)
+            if (p == null) {
+                ui.flash = "تعذّر إنشاء الغرفة"
+                delay(1500)
+                ui.flash = null
+                return@launch
+            }
+            partyId = p.id
+            isHost = true
+            ui.partyCode = p.code
+            ui.chatOpen = true
+            startPartyLoops()
+        }
+    }
+
+    override fun sendChat(text: String) {
+        val id = partyId ?: return
+        val t = text.trim()
+        if (t.isEmpty()) return
+        val me = com.fivebroz.android.data.Prefs.profileName.ifBlank { "ضيف" }
+        ui.messages.add(com.fivebroz.android.data.PartyMessage("local-${System.nanoTime()}", me, t))
+        lifecycleScope.launch { com.fivebroz.android.data.Parties.send(id, me, t) }
+    }
+
+    /** Host broadcasts position every few seconds; guests follow; both read chat. */
+    private fun startPartyLoops() {
+        partyJob?.cancel()
+        partyJob = lifecycleScope.launch {
+            var n = 0
+            while (true) {
+                val id = partyId ?: break
+                val p = player
+                if (isHost) {
+                    if (p != null && n % 3 == 0) {
+                        com.fivebroz.android.data.Parties.beat(id, p.currentPosition / 1000.0, p.isPlaying, args.videoId)
+                    }
+                } else {
+                    val party = com.fivebroz.android.data.Parties.get(id)
+                    if (party != null) {
+                        if (ui.partyCode.isEmpty()) ui.partyCode = party.code
+                        val vid = party.videoId
+                        if (vid != null && vid != args.videoId) {
+                            // Host moved on (e.g. next episode) — follow.
+                            args = args.copy(videoId = vid, label = "", streamUrl = null, queueIds = arrayListOf(), queueLabels = arrayListOf())
+                            begin()
+                        } else if (p != null && overlay is Overlay.None) {
+                            val drift = if (party.isPlaying && party.updatedAt > 0)
+                                (System.currentTimeMillis() - party.updatedAt).coerceIn(0, 6000) / 1000.0 else 0.0
+                            val target = party.positionSec + drift
+                            if (kotlin.math.abs(p.currentPosition / 1000.0 - target) > 3.0) p.seekTo((target * 1000).toLong())
+                            if (party.isPlaying && !p.isPlaying) p.play()
+                            if (!party.isPlaying && p.isPlaying) p.pause()
+                        }
+                    }
+                }
+                if (n % 3 == 0) {
+                    val msgs = com.fivebroz.android.data.Parties.messages(id)
+                    if (msgs.isNotEmpty() && msgs.last().id != lastSeenMsg) {
+                        val fresh = lastSeenMsg != null
+                        lastSeenMsg = msgs.last().id
+                        ui.messages.clear()
+                        ui.messages.addAll(msgs)
+                        if (fresh && !ui.chatOpen) {
+                            val m = msgs.last()
+                            ui.bubble = "${m.sender ?: "ضيف"}: ${m.body}"
+                            launch { delay(5000); ui.bubble = null }
+                        }
+                    }
+                }
+                n++
+                delay(1000)
+            }
+        }
+    }
+
+    /** Host: push a beat right away after play/pause/seek so guests react quickly. */
+    private fun beatNow() {
+        val id = partyId ?: return
+        if (!isHost) return
+        val p = player ?: return
+        lifecycleScope.launch { com.fivebroz.android.data.Parties.beat(id, p.currentPosition / 1000.0, p.isPlaying, args.videoId) }
     }
 
     // ---------- playback ----------
@@ -527,9 +639,12 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     // ---------- remote / keys ----------
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (overlay is Overlay.Next || overlay is Overlay.Failed || ui.subsOpen) {
-            if (ui.subsOpen && event.keyCode == KeyEvent.KEYCODE_BACK) {
-                if (event.action == KeyEvent.ACTION_UP) ui.subsOpen = false
+        if (overlay is Overlay.Next || overlay is Overlay.Failed || ui.subsOpen || ui.chatOpen) {
+            if ((ui.subsOpen || ui.chatOpen) && event.keyCode == KeyEvent.KEYCODE_BACK) {
+                if (event.action == KeyEvent.ACTION_UP) {
+                    ui.subsOpen = false
+                    ui.chatOpen = false
+                }
                 return true
             }
             return super.dispatchKeyEvent(event)
@@ -579,6 +694,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
 
     override fun onDestroy() {
         torrentJob?.cancel()
+        partyJob?.cancel()
         Thread { engine.close() }.start()
         saveJob?.cancel()
         nextJob?.cancel()

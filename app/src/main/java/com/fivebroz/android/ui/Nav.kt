@@ -211,6 +211,11 @@ private fun TvRail(tab: Tab, onTab: (Tab) -> Unit, onProfile: () -> Unit) {
             }
         }
         Spacer(Modifier.weight(1f))
+        var join by remember { mutableStateOf(false) }
+        RailItem("انضمام لغرفة", false, open, { join = true }) {
+            Text("⧉", fontSize = 20.sp, color = it)
+        }
+        if (join) JoinPartyDialog { join = false }
         RailItem(Prefs.profileName, false, open, onProfile) {
             Avatar(Prefs.current(), 26.dp)
         }
