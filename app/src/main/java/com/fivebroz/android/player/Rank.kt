@@ -1,6 +1,22 @@
 package com.fivebroz.android.player
 
+import android.media.MediaCodecInfo.CodecProfileLevel
+import android.media.MediaCodecList
 import com.fivebroz.android.data.Stream
+
+/** What this device's hardware can decode, so we pick files it can actually play. */
+object Caps {
+    private val decoders by lazy {
+        MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter { !it.isEncoder }
+    }
+    private fun supports(mime: String, profile: Int? = null): Boolean = decoders.any { c ->
+        c.supportedTypes.any { it.equals(mime, true) } && (profile == null || runCatching {
+            c.getCapabilitiesForType(mime).profileLevels.any { it.profile == profile }
+        }.getOrDefault(false))
+    }
+    val hevc by lazy { supports("video/hevc") }
+    val hevc10 by lazy { supports("video/hevc", CodecProfileLevel.HEVCProfileMain10) }
+}
 
 /** What a stream looks like to a person, extracted from the addon's text. */
 data class StreamInfo(
@@ -59,6 +75,11 @@ fun describe(s: Stream, isTv: Boolean): StreamInfo {
         "720p" -> 20
         else -> 0
     }
+    // Skip files this device can't decode (instead of trying and failing).
+    val isHevc = Regex("""\b(x265|h\.?265|hevc)\b""").containsMatchIn(low)
+    val is10 = Regex("""\b10[ -]?bit\b""").containsMatchIn(low)
+    if (isHevc && !Caps.hevc) score -= 120
+    if (isHevc && is10 && !Caps.hevc10) score -= 120
     if (dv) score -= 30 // Dolby Vision shows wrong colours on many devices
     if (Regex("""\b(cam|hdcam|ts|telesync)\b""").containsMatchIn(low)) score -= 150
     if (gb != null && gb > 25) score -= 20
