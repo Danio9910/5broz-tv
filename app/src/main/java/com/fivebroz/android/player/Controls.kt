@@ -209,7 +209,12 @@ private fun RoundButton(label: String, size: androidx.compose.ui.unit.Dp, big: B
                 .border(if (big || f) 0.dp else 1.5.dp, C.Paper.copy(alpha = 0.7f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Text(label, fontSize = if (big) 26.sp else 15.sp, color = if (f) C.Ink950 else C.Paper)
+            Text(
+                label,
+                fontSize = if (big) 26.sp else 15.sp,
+                color = if (f) C.Ink950 else C.Paper,
+                style = androidx.compose.ui.text.TextStyle(textDirection = androidx.compose.ui.text.style.TextDirection.Ltr),
+            )
         }
     }
 }

@@ -283,9 +283,11 @@ private fun TvHome(
 
     val defaultSpec = LocalBringIntoViewSpec.current
     // Rows snap so the focused row sits at the same height every time.
-    val pinTop = remember {
+    val titleRoom = with(LocalDensity.current) { 46.dp.toPx() }
+    val pinTop = remember(titleRoom) {
         object : BringIntoViewSpec {
-            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = offset
+            // Keep the row heading visible above the focused card.
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = offset - titleRoom
         }
     }
 

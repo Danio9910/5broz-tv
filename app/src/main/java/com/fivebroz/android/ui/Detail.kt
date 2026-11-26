@@ -428,7 +428,7 @@ private fun Modifier.clipRounded(r: Dp) = this.then(Modifier.clip(RoundedCornerS
 
 // ---------------------------------------------------------------- TV
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun TvDetail(
     m: DetailModel,
@@ -453,6 +453,7 @@ private fun TvDetail(
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to C.Ink950.copy(alpha = 0.2f), 0.5f to C.Ink950.copy(alpha = 0.7f), 1f to C.Ink950)))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to C.Ink950)))
 
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides MinimalScroll) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 60.dp)) {
             item("head") {
                 Column(Modifier.fillMaxWidth(0.55f).padding(start = g, top = 70.dp, bottom = 26.dp)) {
@@ -515,6 +516,7 @@ private fun TvDetail(
             }
             if (d.collection.size > 1) item("collection") { PosterRow(d.collectionName ?: "السلسلة", d.collection, onOpen, g) }
             if (d.related.isNotEmpty()) item("related") { PosterRow("قد يعجبك أيضاً", d.related, onOpen, g) }
+        }
         }
     }
 }

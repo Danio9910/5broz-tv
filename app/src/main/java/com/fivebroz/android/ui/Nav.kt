@@ -188,7 +188,7 @@ private fun TvRail(tab: Tab, onTab: (Tab) -> Unit, onProfile: () -> Unit) {
             .fillMaxHeight()
             .width(w)
             .background(
-                if (open) Brush.horizontalGradient(listOf(C.Ink950, C.Ink950.copy(alpha = 0.97f), C.Ink950.copy(alpha = 0.0f)))
+                if (open) Brush.horizontalGradient(0f to C.Ink950, 0.8f to C.Ink950, 1f to C.Ink950.copy(alpha = 0.0f))
                 else Brush.horizontalGradient(listOf(C.Ink950.copy(alpha = 0.85f), C.Ink950.copy(alpha = 0.0f))),
             )
             .onFocusChanged { open = it.hasFocus }

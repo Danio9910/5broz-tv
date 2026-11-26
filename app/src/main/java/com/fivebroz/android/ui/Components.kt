@@ -270,9 +270,9 @@ fun RankedPoster(rank: Int, item: Preview, width: Dp, onClick: () -> Unit, onFoc
             "$rank",
             Modifier.align(Alignment.BottomStart).offset(y = 18.dp),
             style = TextStyle(
-                fontFamily = Cormorant,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = (width.value * 1.05f).sp,
+                fontFamily = Cairo,
+                fontWeight = FontWeight.Bold,
+                fontSize = (width.value * 0.95f).sp,
                 color = C.Ink950,
                 shadow = androidx.compose.ui.graphics.Shadow(C.Gold.copy(alpha = 0.9f), blurRadius = 3f),
             ),
@@ -378,3 +378,16 @@ fun Meta(parts: List<String?>) {
 
 @Composable
 fun VSpace(h: Dp) = Spacer(Modifier.height(h))
+
+/** Scroll only as much as needed to reveal the focused item (no TV "pivot" jump). */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+val MinimalScroll = object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val end = offset + size
+        return when {
+            offset >= 0f && end <= containerSize -> 0f
+            offset < 0f || size > containerSize -> offset
+            else -> end - containerSize
+        }
+    }
+}
