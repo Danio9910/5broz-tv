@@ -551,12 +551,15 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         val arabic = setOf("ara", "ar", "arabic", "العربية")
         val chosen = subs.filter { it.lang.lowercase() in arabic }.take(4) +
             subs.filter { it.lang.lowercase() in setOf("eng", "en", "english") }.take(2)
+        var nAr = 0
+        var nEn = 0
         val subConfigs = chosen.mapIndexed { i, s ->
             val ar = s.lang.lowercase() in arabic
+            val label = if (ar) "العربية ${++nAr}" else "English ${++nEn}"
             MediaItem.SubtitleConfiguration.Builder(Uri.parse(Api.subtitleProxy(s.url, subOffset)))
                 .setMimeType(MimeTypes.TEXT_VTT)
                 .setLanguage(if (ar) "ar" else "en")
-                .setLabel(if (ar) "العربية ${i + 1}" else "English")
+                .setLabel(label)
                 .setSelectionFlags(if (i == 0 && ar) MC.SELECTION_FLAG_DEFAULT else 0)
                 .build()
         }
