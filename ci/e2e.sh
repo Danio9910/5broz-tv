@@ -36,14 +36,16 @@ sleep 20; shot 1-home
 tap_text "بحث"
 sleep 3
 adb shell uiautomator dump /sdcard/ui.xml; adb pull /sdcard/ui.xml $OUT/ui-search.xml
-tap_text "ابحث عن فيلم"
+tap_text "@edit"
 sleep 2; shot 2a-after-tap
 adb shell input text "Shawshank"
 sleep 8; shot 2-search
 adb shell input keyevent 111   # hide keyboard
 sleep 1
+adb shell uiautomator dump /sdcard/ui.xml; adb pull /sdcard/ui.xml $OUT/ui-results.xml
 tap_text "@poster"
 sleep 15; shot 2b-detail
+adb shell uiautomator dump /sdcard/ui.xml; adb pull /sdcard/ui.xml $OUT/ui-detail.xml
 tap_text "تشغيل"
 sleep 30; shot 3-player-30s
 sleep 45; shot 4-player-75s

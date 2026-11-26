@@ -2,6 +2,13 @@
 import re, sys, xml.etree.ElementTree as ET
 root = ET.parse(sys.argv[1]).getroot()
 q = sys.argv[2]
+if q == "@edit":
+    for n in root.iter("node"):
+        if n.get("class", "").endswith("EditText"):
+            x1, y1, x2, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
+            print((x1 + x2) // 2, (y1 + y2) // 2)
+            break
+    sys.exit(0)
 if q == "@poster":
     # First image with a description in the lower part of the screen (a result poster).
     h = max(int(re.findall(r"\d+", n.get("bounds"))[3]) for n in root.iter("node"))
