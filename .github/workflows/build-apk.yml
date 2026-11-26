@@ -57,3 +57,30 @@ jobs:
           name: CI build log
           prerelease: true
           files: build.log
+
+  # Real-network test of the built-in torrent engine (magnet -> stream -> seek).
+  engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Stream a real torrent through the engine
+        env:
+          RUN_ENGINE_TEST: '1'
+        run: |
+          chmod +x ./gradlew
+          set -o pipefail
+          ./gradlew :torrent:test --no-daemon 2>&1 | tee engine-test.log
+      - name: Publish engine test log
+        if: always()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-log
+          name: CI build log
+          prerelease: true
+          files: engine-test.log

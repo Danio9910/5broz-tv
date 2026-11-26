@@ -64,15 +64,19 @@ import com.fivebroz.android.R
 import com.fivebroz.android.data.Api
 import com.fivebroz.android.data.Db
 import com.fivebroz.android.data.Net
+import com.fivebroz.android.data.Stream
 import com.fivebroz.android.data.Subtitle
+import com.fivebroz.torrent.TorrentEngine
 import com.fivebroz.android.ui.C
 import com.fivebroz.android.ui.FiveBrozTheme
 import com.fivebroz.android.ui.GoldButton
 import com.fivebroz.android.ui.VSpace
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Everything the player needs to know about what to play. */
@@ -99,6 +103,9 @@ private sealed interface Overlay {
 class PlayerActivity : ComponentActivity() {
 
     companion object {
+        /** A source chosen by hand in the sources panel (handed over in-process). */
+        var pendingPick: Stream? = null
+
         fun start(ctx: Context, a: PlayArgs) {
             ctx.startActivity(
                 Intent(ctx, PlayerActivity::class.java)
@@ -123,7 +130,9 @@ class PlayerActivity : ComponentActivity() {
     private var overlay by mutableStateOf<Overlay>(Overlay.Loading("جارٍ تجهيز أفضل مصدر…"))
     private var controlsVisible by mutableStateOf(false)
 
-    private var candidates: List<String> = emptyList()
+    private var candidates: List<Stream> = emptyList()
+    private var torrentJob: Job? = null
+    private val engine by lazy { Torrents.get(this) }
     private var attempt = 0
     private var startedAt = 0L
     private var saveJob: Job? = null
@@ -185,7 +194,10 @@ class PlayerActivity : ComponentActivity() {
     // ---------- playback ----------
 
     private fun buildPlayer(): ExoPlayer {
-        val http = OkHttpDataSource.Factory(Net.client)
+        // Torrent pieces can take a while to arrive, so allow long reads.
+        val http = OkHttpDataSource.Factory(
+            Net.client.newBuilder().readTimeout(150, java.util.concurrent.TimeUnit.SECONDS).build(),
+        )
         val selector = DefaultTrackSelector(this).apply {
             setParameters(buildUponParameters().setPreferredTextLanguage("ar"))
         }
@@ -229,11 +241,14 @@ class PlayerActivity : ComponentActivity() {
         lifecycleScope.launch {
             val subsAsync = async { Api.subtitles(args.type, args.videoId) }
             val ranked = try {
-                rank(Api.streams(args.type, args.videoId), isTv).map { it.stream.url }
+                rank(Api.streams(args.type, args.videoId), isTv).map { it.stream }
             } catch (_: Exception) {
                 emptyList()
             }
-            candidates = (listOfNotNull(args.streamUrl) + ranked).distinct().take(6)
+            val picked = pendingPick.also { pendingPick = null }
+            candidates = (listOfNotNull(picked) + ranked)
+                .distinctBy { it.url ?: it.infoHash }
+                .take(6)
             if (candidates.isEmpty()) {
                 overlay = Overlay.Failed("لم نجد مصدراً جاهزاً لهذا العنوان الآن.")
                 return@launch
@@ -244,7 +259,53 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun play(url: String, positionSec: Long) {
+    /** Direct links play straight away; torrents go through the built-in engine first. */
+    private fun play(stream: Stream, positionSec: Long) {
+        torrentJob?.cancel()
+        val direct = stream.url
+        if (direct != null) {
+            stopTorrent()
+            playUrl(direct, positionSec)
+            return
+        }
+        val hash = stream.infoHash ?: return tryNext()
+        player?.stop()
+        overlay = Overlay.Loading("جارٍ الاتصال بشبكة التورنت…")
+        torrentJob = lifecycleScope.launch {
+            // Live progress while peers are found and the first pieces arrive.
+            val ticker = launch {
+                while (true) {
+                    delay(1000)
+                    val st = engine.status()
+                    if (overlay is Overlay.Loading) {
+                        overlay = Overlay.Loading(
+                            if (st.peers == 0) "جارٍ البحث عن مصادر…"
+                            else "متصل بـ ${st.peers} مصدر · ${"%.1f".format(st.bytesPerSec / 1_048_576f)} م.ب/ث",
+                        )
+                    }
+                }
+            }
+            val local = try {
+                withContext(Dispatchers.IO) {
+                    engine.close()
+                    engine.open(TorrentEngine.magnet(hash, stream.trackers), stream.fileIdx)
+                }
+            } catch (_: Exception) {
+                null
+            }
+            ticker.cancel()
+            if (local == null) tryNext() else {
+                overlay = Overlay.Loading("جارٍ التحميل المسبق…")
+                playUrl(local, positionSec)
+            }
+        }
+    }
+
+    private fun stopTorrent() {
+        lifecycleScope.launch(Dispatchers.IO) { engine.close() }
+    }
+
+    private fun playUrl(url: String, positionSec: Long) {
         player?.release()
         val p = buildPlayer()
         player = p
@@ -364,6 +425,8 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        torrentJob?.cancel()
+        Thread { engine.close() }.start()
         saveJob?.cancel()
         nextJob?.cancel()
         player?.release()

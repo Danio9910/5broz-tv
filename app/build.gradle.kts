@@ -12,8 +12,8 @@ android {
         applicationId = "com.fivebroz.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "2.0.2"
+        versionCode = 13
+        versionName = "2.1"
     }
 
     // The keystore is committed; its password lives only in the CI secret
@@ -66,6 +66,13 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.9.0")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // Built-in torrent engine (plays without a debrid service, like Stremio).
+    implementation(project(":torrent"))
+    val lt = "2.1.0-39"
+    implementation("org.libtorrent4j:libtorrent4j-android-arm:$lt")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm64:$lt")
+    implementation("org.libtorrent4j:libtorrent4j-android-x86_64:$lt")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     val media3 = "1.6.1"

@@ -46,7 +46,10 @@ data class Home(
 )
 
 data class Stream(
-    val url: String,
+    val url: String?, // direct link (debrid) — or null for a torrent
+    val infoHash: String? = null,
+    val fileIdx: Int? = null,
+    val trackers: List<String> = emptyList(),
     val name: String,
     val title: String,
     val source: String,
@@ -130,12 +133,19 @@ object Api {
         Net.getObj("$B/api/search?q=${enc(q)}").optJSONArray("results").mapObjects(::parsePreview)
 
     suspend fun streams(type: String, videoId: String): List<Stream> {
-        val body = JSONObject().put("type", type).put("id", videoId).put("addons", org.json.JSONArray())
+        val body = JSONObject().put("type", type).put("id", videoId)
+            .put("addons", org.json.JSONArray()).put("p2p", true)
         return Net.postObj("$B/api/streams", body).optJSONArray("streams").mapObjects { s ->
-            val url = s.str("url") ?: return@mapObjects null
+            val url = s.str("url")
+            val hash = s.str("infoHash")
+            if (url == null && hash == null) return@mapObjects null
             val hints = s.optJSONObject("behaviorHints")
             Stream(
                 url = url,
+                infoHash = hash,
+                fileIdx = s.int("fileIdx"),
+                trackers = s.optJSONArray("sources").strings()
+                    .filter { it.startsWith("tracker:") }.map { it.removePrefix("tracker:") },
                 name = s.str("name") ?: "",
                 title = s.str("title") ?: s.str("description") ?: "",
                 source = s.str("_source") ?: "",

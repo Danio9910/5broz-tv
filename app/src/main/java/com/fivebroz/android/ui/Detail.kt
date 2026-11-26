@@ -111,7 +111,8 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
             ?: episodes.firstOrNull { it.id !in finished }
             ?: episodes.firstOrNull()
 
-    fun play(videoId: String, label: String, streamUrl: String? = null) {
+    fun play(videoId: String, label: String, pick: com.fivebroz.android.data.Stream? = null) {
+        PlayerActivity.pendingPick = pick
         val after = if (isSeries) episodes.dropWhile { it.id != videoId }.drop(1).take(30) else emptyList()
         PlayerActivity.start(
             ctx,
@@ -122,7 +123,6 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
                 poster = d.base.poster,
                 videoId = videoId,
                 label = label,
-                streamUrl = streamUrl,
                 queueIds = ArrayList(after.map { it.id }),
                 queueLabels = ArrayList(after.map(::epLabel)),
             ),
@@ -265,9 +265,9 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
         }
 
         sourcesFor?.let { (vid, label) ->
-            SourcesPanel(d.base.type, vid, onClose = { sourcesFor = null }) { url ->
+            SourcesPanel(d.base.type, vid, onClose = { sourcesFor = null }) { stream ->
                 sourcesFor = null
-                play(vid, label, url)
+                play(vid, label, stream)
             }
         }
     }
@@ -314,7 +314,7 @@ private fun EpisodeCard(e: Episode, watched: Boolean, current: Boolean, onClick:
 
 /** A side panel listing every playable source, best first. */
 @Composable
-private fun SourcesPanel(type: String, videoId: String, onClose: () -> Unit, onPick: (String) -> Unit) {
+private fun SourcesPanel(type: String, videoId: String, onClose: () -> Unit, onPick: (com.fivebroz.android.data.Stream) -> Unit) {
     val isTv = LocalIsTv.current
     var list by remember { mutableStateOf<List<StreamInfo>?>(null) }
     val fr = remember { FocusRequester() }
@@ -350,7 +350,7 @@ private fun SourcesPanel(type: String, videoId: String, onClose: () -> Unit, onP
                     items(l.size) { i ->
                         val s = l[i]
                         Focusable(
-                            onClick = { onPick(s.stream.url) },
+                            onClick = { onPick(s.stream) },
                             modifier = Modifier.fillMaxWidth(),
                             lift = 1.02f,
                             focusRequester = if (i == 0) fr else null,
@@ -365,6 +365,7 @@ private fun SourcesPanel(type: String, videoId: String, onClose: () -> Unit, onP
                                     if (s.hdr) Text("HDR", color = C.Paper, style = MaterialTheme.typography.labelMedium)
                                     if (s.size != null) Text(s.size, color = C.Muted, style = MaterialTheme.typography.labelMedium)
                                     if (s.cached) Text("فوري", color = C.Gold, style = MaterialTheme.typography.labelMedium)
+                                    if (s.isTorrent) Text("تورنت · ${s.seeders ?: 0} مشارك", color = C.Muted, style = MaterialTheme.typography.labelMedium)
                                     if (i == 0) Text("الأنسب", color = C.Ink950, style = MaterialTheme.typography.labelMedium,
                                         modifier = Modifier.background(C.Gold, RoundedCornerShape(50)).padding(horizontal = 8.dp))
                                 }

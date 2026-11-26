@@ -9,9 +9,13 @@ data class StreamInfo(
     val cached: Boolean, // instantly playable from Real-Debrid
     val size: String?,
     val hdr: Boolean,
+    val seeders: Int?, // torrents only
     val score: Int,
-)
+) {
+    val isTorrent get() = stream.url == null
+}
 
+private val SEEDS = Regex("""👤\s*(\d+)""")
 private val SIZE = Regex("""(\d+(?:\.\d+)?)\s*(GB|MB)""", RegexOption.IGNORE_CASE)
 
 fun describe(s: Stream, isTv: Boolean): StreamInfo {
@@ -32,7 +36,21 @@ fun describe(s: Stream, isTv: Boolean): StreamInfo {
         val v = it.groupValues[1].toDoubleOrNull() ?: 0.0
         if (it.groupValues[2].equals("MB", true)) v / 1024 else v
     }
+    val seeders = SEEDS.find(text)?.groupValues?.get(1)?.toIntOrNull()
     var score = 0
+    if (s.url == null) {
+        // Torrent: what matters most is how many people share it.
+        val seeds = seeders ?: 0
+        score += when {
+            seeds >= 200 -> 90
+            seeds >= 50 -> 70
+            seeds >= 15 -> 45
+            seeds >= 5 -> 20
+            else -> -60
+        }
+        if (gb != null && gb > 8) score -= 40 // huge files start slowly and fill storage
+        if (quality == "4K") score -= 30
+    }
     if (cached) score += 100
     if (uncached) score -= 200
     score += when (quality) {
@@ -51,6 +69,7 @@ fun describe(s: Stream, isTv: Boolean): StreamInfo {
         cached = cached,
         size = m?.let { "${it.groupValues[1]} ${it.groupValues[2].uppercase()}" },
         hdr = hdr,
+        seeders = seeders,
         score = score,
     )
 }

@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "5broz"
 include(":app")
+include(":torrent")
