@@ -137,7 +137,7 @@ private fun PinDialog(p: Profile, onDismiss: () -> Unit, onOk: () -> Unit) {
             Field(pin, { pin = it.filter(Char::isDigit).take(6); error = "" }, "••••", ::submit,
                 Modifier.fillMaxWidth(), secret = true, numeric = true, focusRequester = fr)
             if (error.isNotEmpty()) Text(error, color = C.Danger, style = MaterialTheme.typography.bodyMedium)
-            GoldButton("دخول", ::submit, Modifier.fillMaxWidth())
+            GoldButton("دخول", ::submit, Modifier.fillMaxWidth(), fill = true)
         }
     }
 }

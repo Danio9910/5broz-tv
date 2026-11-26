@@ -123,7 +123,7 @@ fun GateScreen(onPass: () -> Unit) {
             Text("اكتب رمز الدخول للمتابعة", color = C.Muted, style = MaterialTheme.typography.bodyMedium)
             Field(code, { code = it; error = "" }, "رمز الدخول", ::submit, Modifier.fillMaxWidth(), focusRequester = fr)
             if (error.isNotEmpty()) Text(error, color = C.Danger, style = MaterialTheme.typography.bodyMedium)
-            GoldButton(if (busy) "…" else "دخول", ::submit, Modifier.fillMaxWidth())
+            GoldButton(if (busy) "…" else "دخول", ::submit, Modifier.fillMaxWidth(), fill = true)
         }
     }
 }
@@ -151,7 +151,7 @@ fun CodeDialog(title: String, onDismiss: () -> Unit, onOk: () -> Unit) {
             Text("اكتب رمز الدخول للمتابعة", color = C.Muted, style = MaterialTheme.typography.bodyMedium)
             Field(code, { code = it; error = "" }, "رمز الدخول", ::submit, Modifier.fillMaxWidth(), secret = true, focusRequester = fr)
             if (error.isNotEmpty()) Text(error, color = C.Danger, style = MaterialTheme.typography.bodyMedium)
-            GoldButton("تأكيد", ::submit, Modifier.fillMaxWidth())
+            GoldButton("تأكيد", ::submit, Modifier.fillMaxWidth(), fill = true)
         }
     }
 }

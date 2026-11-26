@@ -89,6 +89,7 @@ fun GoldButton(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
     filled: Boolean = true,
+    fill: Boolean = false, // stretch to the width the caller gave (e.g. full-width form buttons)
 ) {
     Focusable(onClick, modifier, RoundedCornerShape(50), lift = 1.05f, focusRequester = focusRequester) { f ->
         val bg = when {
@@ -97,7 +98,7 @@ fun GoldButton(
             else -> C.Paper.copy(alpha = 0.08f)
         }
         Box(
-            Modifier.background(bg).padding(horizontal = 26.dp, vertical = 11.dp),
+            (if (fill) Modifier.fillMaxWidth() else Modifier).background(bg).padding(horizontal = 26.dp, vertical = 11.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
