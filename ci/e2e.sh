@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Walks through the app like a person: home -> title -> play (torrent), with screenshots.
-set -x
 PKG=com.fivebroz.android
 OUT=e2e
 mkdir -p $OUT
+exec > >(tee $OUT/run.txt) 2>&1
+set -x
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 # Skip the access-code screen (code is a secret) by pre-seeding the app's settings.
@@ -34,8 +35,9 @@ sleep 20; shot 1-home
 # Find a well-known, released film through search.
 tap_text "بحث"
 sleep 3
+adb shell uiautomator dump /sdcard/ui.xml; adb pull /sdcard/ui.xml $OUT/ui-search.xml
 tap_text "ابحث عن فيلم"
-sleep 2
+sleep 2; shot 2a-after-tap
 adb shell input text "Shawshank"
 sleep 8; shot 2-search
 adb shell input keyevent 111   # hide keyboard
