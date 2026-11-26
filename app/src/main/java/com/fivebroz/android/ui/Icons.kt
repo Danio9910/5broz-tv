@@ -28,4 +28,5 @@ object Icons {
     val Home = line("M3 10.8 12 3l9 7.8M5.5 9.5V21h4.2v-6h4.6v6h4.2V9.5", "home")
     val Search = line("M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", "search")
     val Library = line("M6 3h12v18l-6-4-6 4z", "library")
+    val Tonight = line("M12 3l2.6 5.5 6 .8-4.3 4.2 1 6-5.3-2.8-5.3 2.8 1-6L3.4 9.3l6-.8z", "tonight")
 }

@@ -108,6 +108,7 @@ enum class Tab(val label: String, val icon: ImageVector) {
     Home("الرئيسية", Icons.Home),
     Search("بحث", Icons.Search),
     Library("قائمتي", Icons.Library),
+    Tonight("الليلة", Icons.Tonight),
 }
 
 /** Horizontal page margin. On TV the side rail takes the first 80dp. */
@@ -136,6 +137,7 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
             Tab.Home -> HomeScreen(onOpen, switchProfile)
             Tab.Search -> SearchScreen(onOpen)
             Tab.Library -> LibraryScreen(onOpen)
+            Tab.Tonight -> TonightScreen(onOpen)
         }
     }
 

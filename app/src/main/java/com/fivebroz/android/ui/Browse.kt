@@ -1,5 +1,9 @@
 package com.fivebroz.android.ui
 
+import kotlinx.coroutines.launch
+import com.fivebroz.android.data.Prefs
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -130,4 +134,84 @@ fun PageTitle(text: String) {
         modifier = Modifier.then(if (LocalIsTv.current) Modifier else Modifier.statusBarsPadding()).padding(top = 14.dp, bottom = 14.dp),
         style = MaterialTheme.typography.headlineMedium,
     )
+}
+
+/** "What shall we watch tonight?" — household suggestions, most votes first. */
+@Composable
+fun TonightScreen(onOpen: (Preview) -> Unit) {
+    var list by remember { mutableStateOf<List<com.fivebroz.android.data.Suggestion>?>(null) }
+    var tick by remember { mutableStateOf(0) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val g = gutter()
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { tick++ }
+    LaunchedEffect(tick) { list = Db.suggestions() }
+
+    androidx.compose.foundation.lazy.LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = g, end = g, top = if (LocalIsTv.current) 32.dp else 0.dp, bottom = 40.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item("title") {
+            Column {
+                PageTitle("نشاهد الليلة")
+                Text("اقترحوا وصوّتوا — الأعلى صوتاً يفوز.", color = C.Muted, style = MaterialTheme.typography.bodyMedium)
+                VSpace(14.dp)
+            }
+        }
+        val l = list
+        when {
+            l == null -> items(3) { Skeleton(Modifier.fillMaxWidth().height(96.dp)) }
+            l.isEmpty() -> item("empty") {
+                Text(
+                    "لا اقتراحات بعد. افتح أي عنوان واضغط «اقترح لليلة».",
+                    color = C.Muted,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(top = 30.dp),
+                )
+            }
+            else -> items(l.size, key = { l[it].id }) { i ->
+                val s = l[i]
+                val leader = i == 0 && s.votes > 0
+                androidx.compose.foundation.layout.Row(
+                    Modifier.fillMaxWidth()
+                        .background(if (leader) C.Gold.copy(alpha = 0.12f) else C.Ink900, androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                        .padding(10.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Poster(s.item, 54.dp, { onOpen(s.item) })
+                    Column(Modifier.weight(1f)) {
+                        if (leader) Text("الأعلى تصويتاً", color = C.Gold, style = MaterialTheme.typography.labelMedium)
+                        Text(s.item.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        s.addedBy?.let { Text("اقترحه $it", color = C.Muted, style = MaterialTheme.typography.labelMedium) }
+                    }
+                    Focusable(
+                        {
+                            val voted = s.votedByMe
+                            list = l.map { if (it.id == s.id) it.copy(votedByMe = !voted, votes = it.votes + if (voted) -1 else 1) else it }
+                                .sortedByDescending { it.votes }
+                            scope.launch { Db.toggleVote(s.id, voted) }
+                        },
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                        lift = 1.06f,
+                    ) { f ->
+                        Text(
+                            "▲ ${s.votes}",
+                            Modifier.background(if (f) C.Paper else if (s.votedByMe) C.Gold else C.Ink700).padding(horizontal = 16.dp, vertical = 9.dp),
+                            color = if (f || s.votedByMe) C.Ink950 else C.Paper,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                    if (s.addedBy != null && s.addedBy == Prefs.profileName) {
+                        Focusable({
+                            list = l.filter { it.id != s.id }
+                            scope.launch { Db.removeSuggestion(s.id) }
+                        }, shape = androidx.compose.foundation.shape.CircleShape, lift = 1.06f, ring = false) {
+                            Text("✕", Modifier.padding(10.dp), color = C.Muted)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

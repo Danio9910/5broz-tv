@@ -265,14 +265,15 @@ fun WideCard(
 /** Netflix-style top-10 tile: a tall outlined numeral tucked behind the poster. */
 @Composable
 fun RankedPoster(rank: Int, item: Preview, width: Dp, onClick: () -> Unit, onFocus: (() -> Unit)? = null) {
-    Box(Modifier.width(width * 1.55f)) {
+    // Fixed to the poster's height so the numeral never pushes the row taller.
+    Box(Modifier.width(width * 1.55f).height(width * 1.5f)) {
         Text(
             "$rank",
-            Modifier.align(Alignment.BottomStart).offset(y = 18.dp),
+            Modifier.align(Alignment.BottomStart).offset(y = 14.dp),
             style = TextStyle(
                 fontFamily = Cairo,
                 fontWeight = FontWeight.Bold,
-                fontSize = (width.value * 0.95f).sp,
+                fontSize = (width.value * 0.8f).sp,
                 color = C.Ink950,
                 shadow = androidx.compose.ui.graphics.Shadow(C.Gold.copy(alpha = 0.9f), blurRadius = 3f),
             ),

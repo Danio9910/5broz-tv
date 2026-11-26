@@ -70,6 +70,14 @@ import kotlinx.coroutines.launch
 
 private fun epLabel(e: Episode) = "م${e.season} · ح${e.episode}" + if (e.title.isNotBlank()) " — ${e.title}" else ""
 
+/** Personal touches on a title: thumbs rating and "suggest for tonight". */
+private class Extras(
+    val rating: Int,
+    val onRate: (Int) -> Unit,
+    val suggested: Boolean,
+    val onSuggest: () -> Unit,
+)
+
 /** Everything both layouts need, computed once. */
 private class DetailModel(
     val d: Detail,
@@ -95,6 +103,8 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
     var resumeProgress by remember { mutableStateOf(0f) }
     var season by remember { mutableIntStateOf(1) }
     var sourcesFor by remember { mutableStateOf<Pair<String, String>?>(null) } // videoId to label
+    var rating by remember { mutableIntStateOf(0) }
+    var suggested by remember { mutableStateOf(false) }
 
     LaunchedEffect(type, id) {
         try {
@@ -112,6 +122,7 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
     fun refresh(d: Detail) {
         scope.launch {
             saved = Db.inLibrary(d.base.id)
+            rating = Db.rating(d.base.id)
             finished = Db.finishedIds(d.base.id)
             val r = Db.continueWatching().firstOrNull { it.item.id == d.base.id }
             resumeVideo = r?.videoId
@@ -188,9 +199,24 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
         Unit
     }
     val openSources = { if (mainVideo != null) sourcesFor = mainVideo to mainLabel }
+    val extras = Extras(
+        rating = rating,
+        onRate = { v ->
+            val nv = if (rating == v) 0 else v
+            rating = nv
+            scope.launch { Db.setRating(d.base.id, nv) }
+        },
+        suggested = suggested,
+        onSuggest = {
+            if (!suggested) {
+                suggested = true
+                scope.launch { Db.suggest(d.base) }
+            }
+        },
+    )
 
     if (isTv) {
-        TvDetail(m, saved, finished, resumeVideo, season, { season = it }, available, ::play, toggleSaved, openSources, onOpen)
+        TvDetail(m, saved, finished, resumeVideo, season, { season = it }, available, ::play, toggleSaved, openSources, onOpen, extras)
         sourcesFor?.let { (vid, label) ->
             SourcesSidePanel(d.base.type, vid, onClose = { sourcesFor = null }) { s ->
                 sourcesFor = null
@@ -200,7 +226,7 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
     } else {
         PhoneDetail(
             m, saved, finished, resumeVideo, resumeProgress, season, { season = it }, available,
-            ::play, toggleSaved, openSources, onOpen, onBack,
+            ::play, toggleSaved, openSources, onOpen, onBack, extras,
         )
         sourcesFor?.let { (vid, label) ->
             SourcesSheet(d.base.type, vid, onClose = { sourcesFor = null }) { s ->
@@ -243,6 +269,7 @@ private fun PhoneDetail(
     openSources: () -> Unit,
     onOpen: (Preview) -> Unit,
     onBack: () -> Unit,
+    x: Extras,
 ) {
     val d = m.d
     val g = gutter()
@@ -304,8 +331,12 @@ private fun PhoneDetail(
                     }
                     VSpace(18.dp)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        ActionIcon(if (saved) "✓" else "+", if (saved) "في قائمتي" else "قائمتي", toggleSaved)
-                        if (m.mainVideo != null && m.canPlay && available != false) ActionIcon("⇅", "المصادر", openSources)
+                        val w = Modifier.weight(1f)
+                        ActionIcon(if (saved) "✓" else "+", if (saved) "في قائمتي" else "قائمتي", toggleSaved, modifier = w)
+                        ActionIcon(if (x.suggested) "✓" else "☾", if (x.suggested) "مقترح" else "لليلة", x.onSuggest, modifier = w)
+                        ActionIcon("👍", "أعجبني", { x.onRate(1) }, dim = x.rating == -1, modifier = w)
+                        ActionIcon("👎", "ليس لي", { x.onRate(-1) }, dim = x.rating == 1, modifier = w)
+                        if (m.mainVideo != null && m.canPlay && available != false) ActionIcon("⇅", "المصادر", openSources, modifier = w)
                     }
                     VSpace(10.dp)
                 }
@@ -379,11 +410,11 @@ private fun CertBadge(text: String) {
 }
 
 @Composable
-private fun ActionIcon(glyph: String, label: String, onClick: () -> Unit) {
-    Focusable(onClick, shape = RoundedCornerShape(10.dp), lift = 1f, ring = false) {
-        Column(Modifier.width(88.dp).padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(glyph, fontSize = 22.sp, color = C.Paper)
-            Text(label, style = MaterialTheme.typography.labelMedium, color = C.Muted)
+private fun ActionIcon(glyph: String, label: String, onClick: () -> Unit, dim: Boolean = false, modifier: Modifier = Modifier) {
+    Focusable(onClick, modifier, shape = RoundedCornerShape(10.dp), lift = 1f, ring = false) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(glyph, fontSize = 22.sp, color = C.Paper.copy(alpha = if (dim) 0.35f else 1f))
+            Text(label, style = MaterialTheme.typography.labelMedium, color = C.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -444,6 +475,7 @@ private fun TvDetail(
     toggleSaved: () -> Unit,
     openSources: () -> Unit,
     onOpen: (Preview) -> Unit,
+    x: Extras,
 ) {
     val d = m.d
     val g = 56.dp
@@ -485,6 +517,9 @@ private fun TvDetail(
                             focusRequester = if (m.mainText == null) playFr else null,
                         )
                         if (m.mainVideo != null && m.canPlay && available != false) GoldButton("المصادر", openSources, filled = false)
+                        GoldButton(if (x.suggested) "مقترح لليلة" else "اقترح لليلة", x.onSuggest, filled = false, icon = if (x.suggested) "✓" else "☾")
+                        GoldButton(if (x.rating == 1) "أعجبني ✓" else "أعجبني", { x.onRate(1) }, filled = false, icon = "👍")
+                        GoldButton(if (x.rating == -1) "ليس لي ✓" else "ليس لي", { x.onRate(-1) }, filled = false, icon = "👎")
                     }
                     if (available == false || !m.canPlay) {
                         VSpace(12.dp)

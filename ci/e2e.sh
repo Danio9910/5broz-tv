@@ -60,8 +60,8 @@ PS=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1)
 adb shell input tap $(( ${PS#*x} / 2 )) $(( ${PS%x*} / 2 ))   # landscape: reveal the controls
 sleep 1; shot 6-controls
 # Profiles: open the picker, manage mode and the new-profile editor (nothing is saved).
-adb shell input keyevent 4; sleep 2; adb shell input keyevent 4; sleep 2
-adb shell am start -n $PKG/.MainActivity; sleep 6
+adb shell am force-stop $PKG; sleep 2
+adb shell am start -n $PKG/.MainActivity; sleep 12
 tap_text "تبديل" || true
 adb shell uiautomator dump /sdcard/ui.xml > /dev/null; adb pull /sdcard/ui.xml /tmp/ui.xml > /dev/null
 python3 - <<PY
@@ -75,11 +75,17 @@ for n in r.iter("node"):
         best=b; break
 if best: subprocess.run(["adb","shell","input","tap",str((best[0]+best[2])//2),str((best[1]+best[3])//2)])
 PY
-sleep 6; shot 7-profiles
+sleep 8; shot 7-profiles
 tap_text "إدارة الملفات"
 sleep 2; shot 8-manage
 tap_text "ملف جديد"
 sleep 3; shot 9-new-profile
+adb shell input keyevent 4; sleep 2
+# Tonight tab
+adb shell am force-stop $PKG; sleep 1
+adb shell am start -n $PKG/.MainActivity; sleep 10
+tap_text "الليلة"
+sleep 6; shot 10-tonight
 echo "--- app log ---" > $OUT/logcat.txt
 adb logcat -d -s 5broz:V ExoPlayerImpl:V AndroidRuntime:E >> $OUT/logcat.txt
 grep -q "PLAYER READY" $OUT/logcat.txt && echo "E2E: PLAYER READY" || echo "E2E: player never became ready"

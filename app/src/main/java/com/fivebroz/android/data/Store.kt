@@ -80,6 +80,14 @@ data class Profile(
     val pin: String?,
 )
 
+data class Suggestion(
+    val id: String,
+    val item: Preview,
+    val addedBy: String?,
+    val votes: Int,
+    val votedByMe: Boolean,
+)
+
 data class ResumeItem(val item: Preview, val videoId: String, val progress: Float)
 
 /**
@@ -239,6 +247,97 @@ object Db {
                 .mapObjects { it.str("video_id") }.toSet()
         } catch (_: Exception) {
             emptySet()
+        }
+    }
+
+    // ---------- tonight: suggestions + votes (shared with the website) ----------
+
+    suspend fun suggestions(): List<Suggestion> = try {
+        val sugs = select("watch_suggestions?select=id,meta_id,type,name,poster,added_by&order=created_at.desc")
+        val votes = select("watch_votes?select=suggestion_id,profile_id")
+        val me = pid
+        val counts = HashMap<String, Int>()
+        val mine = HashSet<String>()
+        for (i in 0 until votes.length()) {
+            val v = votes.optJSONObject(i) ?: continue
+            val sid = v.str("suggestion_id") ?: continue
+            counts[sid] = (counts[sid] ?: 0) + 1
+            if (me != null && v.str("profile_id") == me) mine += sid
+        }
+        sugs.mapObjects { o ->
+            val id = o.str("id") ?: return@mapObjects null
+            Suggestion(
+                id = id,
+                item = Preview(
+                    id = o.str("meta_id") ?: return@mapObjects null,
+                    type = if (o.str("type") == "series") "series" else "movie",
+                    name = o.str("name") ?: "",
+                    poster = o.str("poster"),
+                ),
+                addedBy = o.str("added_by"),
+                votes = counts[id] ?: 0,
+                votedByMe = id in mine,
+            )
+        }.sortedByDescending { it.votes }
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    suspend fun suggest(item: Preview): Boolean = try {
+        Net.send(
+            "POST", "$URL/watch_suggestions?on_conflict=meta_id",
+            JSONArray().put(
+                JSONObject().put("meta_id", item.id).put("type", item.type).put("name", item.name)
+                    .put("poster", item.poster ?: JSONObject.NULL)
+                    .put("added_by", Prefs.profileName.ifBlank { null } ?: JSONObject.NULL),
+            ).toString(),
+            headers + mapOf("Prefer" to "resolution=ignore-duplicates,return=minimal"),
+        )
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    suspend fun removeSuggestion(id: String) {
+        try {
+            Net.send("DELETE", "$URL/watch_suggestions?id=eq.${q(id)}", null, headers)
+        } catch (_: Exception) {
+        }
+    }
+
+    suspend fun toggleVote(suggestionId: String, voted: Boolean) {
+        val p = pid ?: return
+        try {
+            if (voted) {
+                Net.send("DELETE", "$URL/watch_votes?suggestion_id=eq.${q(suggestionId)}&profile_id=eq.${q(p)}", null, headers)
+            } else {
+                Net.send(
+                    "POST", "$URL/watch_votes",
+                    JSONArray().put(JSONObject().put("suggestion_id", suggestionId).put("profile_id", p)).toString(),
+                    headers + mapOf("Prefer" to "return=minimal"),
+                )
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    // ---------- ratings: 1 = liked, -1 = not for me ----------
+
+    suspend fun rating(metaId: String): Int {
+        val p = pid ?: return 0
+        return try {
+            select("ratings?select=value&profile_id=eq.${q(p)}&meta_id=eq.${q(metaId)}").optJSONObject(0)?.optInt("value") ?: 0
+        } catch (_: Exception) {
+            0
+        }
+    }
+
+    suspend fun setRating(metaId: String, value: Int) {
+        val p = pid ?: return
+        try {
+            if (value == 0) Net.send("DELETE", "$URL/ratings?profile_id=eq.${q(p)}&meta_id=eq.${q(metaId)}", null, headers)
+            else upsert("ratings", "profile_id,meta_id", JSONObject().put("profile_id", p).put("meta_id", metaId).put("value", value))
+        } catch (_: Exception) {
         }
     }
 
