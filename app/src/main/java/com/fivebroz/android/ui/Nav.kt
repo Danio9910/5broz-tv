@@ -35,6 +35,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.border
@@ -420,16 +421,16 @@ private fun RailItem(label: String, selected: Boolean, open: Boolean, onClick: (
 
 /** Translucent header that sits over the hero and firms up as you scroll. */
 @Composable
-fun PhoneHeader(solid: Float, onProfile: () -> Unit, onPick: (() -> Unit)? = null) {
+fun PhoneHeader(solid: () -> Float, onProfile: () -> Unit, onPick: (() -> Unit)? = null) {
     Row(
         Modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    // fully opaque once scrolled, so nothing from the banner shows through
-                    listOf(C.Ink950.copy(alpha = 0.55f + 0.45f * solid), C.Ink950.copy(alpha = solid)),
-                ),
-            )
+            // read while drawing, not composing: scrolling the home doesn't recompose it
+            .drawBehind {
+                val v = solid()
+                // fully opaque once scrolled, so nothing from the banner shows through
+                drawRect(Brush.verticalGradient(listOf(C.Ink950.copy(alpha = 0.55f + 0.45f * v), C.Ink950.copy(alpha = v))))
+            }
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

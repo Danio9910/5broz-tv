@@ -514,15 +514,17 @@ private fun PhoneDetail(
         }
 
         // compact title bar: the logo settles small at the top once the header is gone
-        val bar = ((past - 0.75f) * 4f).coerceIn(0f, 1f)
-        if (bar > 0f) {
+        // Only "is the bar there" is read while composing; how faded it is is read while drawing,
+        // so scrolling doesn't rebuild the page every frame.
+        val barOn by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { past > 0.75f } }
+        if (barOn) {
             Box(
-                Modifier.fillMaxWidth().graphicsLayer { alpha = bar }
+                Modifier.fillMaxWidth().graphicsLayer { alpha = ((past - 0.75f) * 4f).coerceIn(0f, 1f) }
                     .background(Brush.verticalGradient(0f to C.Ink950, 1f to C.Ink950.copy(alpha = 0.82f)))
                     .statusBarsPadding().height(62.dp).padding(start = 62.dp, end = 16.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                Box(Modifier.graphicsLayer { translationY = (1f - bar) * 18f }) {
+                Box(Modifier.graphicsLayer { translationY = (1f - ((past - 0.75f) * 4f).coerceIn(0f, 1f)) * 18f }) {
                     TitleArt(d.base.name, d.base.logo, 34.dp, 150.dp, MaterialTheme.typography.titleMedium)
                 }
             }

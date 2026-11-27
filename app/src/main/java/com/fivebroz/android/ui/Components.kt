@@ -195,7 +195,7 @@ fun GoldButton(
 fun Img(url: String?, modifier: Modifier = Modifier, desc: String? = null) {
     val ctx = LocalContext.current
     AsyncImage(
-        model = remember(url) { ImageRequest.Builder(ctx).data(url).crossfade(260).build() },
+        model = remember(url) { ImageRequest.Builder(ctx).data(url).crossfade(180).build() },
         contentDescription = desc,
         contentScale = ContentScale.Crop,
         modifier = modifier,
@@ -429,7 +429,7 @@ fun PosterRow(
             contentPadding = PaddingValues(horizontal = gutter, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(if (ranked) 4.dp else 10.dp),
         ) {
-            itemsIndexed(items, key = { i, it -> "${it.id}#$i" }) { i, it ->
+            itemsIndexed(items, key = { i, it -> "${it.id}#$i" }, contentType = { _, _ -> "poster" }) { i, it ->
                 val focus = onFocusItem?.let { f -> { f(it) } }
                 if (ranked) RankedPoster(i + 1, it, w, { onOpen(it) }, focus)
                 else if (wide || com.fivebroz.android.data.Prefs.cardStyle == "wide") WideCard(it, w * 1.9f, { onOpen(it) }, progress = progress?.invoke(i), onFocus = focus)

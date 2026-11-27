@@ -213,13 +213,14 @@ private fun PhoneHome(
                 }
                 if (home.genres.isNotEmpty()) item("genres") { GenreRow(home.genres, g) { LocalGenreNav.value?.invoke(it) } }
                 home.rows.forEachIndexed { i, row ->
-                    item("row$i") { PosterRow(row.title, row.items, onOpen, g, wide = row.style == "wide") }
+                    // contentType lets rows scrolled away be reused for the rows coming in
+                    item("row$i", contentType = if (row.style == "wide") "wide-row" else "row") { PosterRow(row.title, row.items, onOpen, g, wide = row.style == "wide") }
                 }
                 item("end") { VSpace(if (LocalIsTablet.current) 28.dp else BottomBarSpace) }
             }
         }
         var picking by remember { mutableStateOf(false) }
-        PhoneHeader(solid, onProfile, onPick = if (home != null) ({ picking = true }) else null)
+        PhoneHeader({ solid }, onProfile, onPick = if (home != null) ({ picking = true }) else null)
         if (picking && home != null) WhatToWatch(home, resume, onOpen) { picking = false }
         if (home != null) OneTimeTip(
             "longpress", "اضغط مطوّلاً على البوستر لخيارات سريعة.",
@@ -541,7 +542,7 @@ private fun TvHome(
                     }
                     home.rows.forEachIndexed { i, row ->
                         val fr = claim()
-                        item("row$i") {
+                        item("row$i", contentType = if (row.style == "wide") "wide-row" else "row") {
                             CompositionLocalProvider(LocalBringIntoViewSpec provides defaultSpec) {
                                 if (row.style == "wide") TvWideRow(row.title, row.items, emptyList(), onOpen, g, fr) { focused = it }
                                 else TvPosterRow(row.title, row.items, onOpen, g, fr) { focused = it }
