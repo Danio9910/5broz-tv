@@ -12,7 +12,8 @@ import java.util.concurrent.TimeUnit
 
 /** One shared HTTP client for the whole app. */
 object Net {
-    const val SITE = "https://5broz.com"
+    // The canonical host: 5broz.com answers every request with a redirect to www (an extra round trip).
+    const val SITE = "https://www.5broz.com"
 
     val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)

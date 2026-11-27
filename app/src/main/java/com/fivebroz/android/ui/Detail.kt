@@ -625,18 +625,23 @@ private fun TvEpisodeCard(e: Episode, watched: Boolean, current: Boolean, onClic
 
 // ---------------------------------------------------------------- sources
 
+private class SourcesState(val list: List<StreamInfo>?, val failed: Boolean, val retry: () -> Unit)
+
 @Composable
-private fun rememberSources(type: String, videoId: String): List<StreamInfo>? {
+private fun rememberSources(type: String, videoId: String): SourcesState {
     val isTv = LocalIsTv.current
     var list by remember { mutableStateOf<List<StreamInfo>?>(null) }
-    LaunchedEffect(videoId) {
-        list = try {
-            rank(Api.streams(type, videoId), isTv)
-        } catch (_: Exception) {
-            emptyList()
-        }
+    var failed by remember { mutableStateOf(false) }
+    var attempt by remember { mutableIntStateOf(0) }
+    LaunchedEffect(videoId, attempt) {
+        failed = false
+        list = null
+        // Reuse what the title page already fetched; otherwise ask, but never wait forever.
+        val got = (if (attempt == 0) kotlinx.coroutines.withTimeoutOrNull(6_000) { com.fivebroz.android.player.StreamPrefetch.result(type, videoId) } else null)
+            ?: kotlinx.coroutines.withTimeoutOrNull(20_000) { runCatching { Api.streams(type, videoId) }.getOrNull() }
+        if (got == null) failed = true else list = rank(got, isTv)
     }
-    return list
+    return SourcesState(list, failed) { attempt++ }
 }
 
 @Composable
@@ -664,12 +669,18 @@ private fun SourceRow(s: StreamInfo, best: Boolean, fr: FocusRequester?, onPick:
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SourcesSheet(type: String, videoId: String, onClose: () -> Unit, onPick: (Stream) -> Unit) {
-    val list = rememberSources(type, videoId)
+    val src = rememberSources(type, videoId)
+    val list = src.list
     ModalBottomSheet(onDismissRequest = onClose, containerColor = C.Ink900) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.75f).navigationBarsPadding().padding(horizontal = 16.dp)) {
             Text("اختر المصدر", style = MaterialTheme.typography.titleLarge)
             VSpace(12.dp)
             when {
+                src.failed -> Column {
+                    Text("تعذّر جلب المصادر. تأكد من الاتصال.", color = C.Muted)
+                    VSpace(12.dp)
+                    GoldButton("إعادة المحاولة", src.retry)
+                }
                 list == null -> repeat(4) { Skeleton(Modifier.fillMaxWidth().height(58.dp).padding(bottom = 8.dp)) }
                 list.isEmpty() -> Text("لا توجد مصادر الآن.", color = C.Muted)
                 else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -682,7 +693,8 @@ private fun SourcesSheet(type: String, videoId: String, onClose: () -> Unit, onP
 
 @Composable
 private fun SourcesSidePanel(type: String, videoId: String, onClose: () -> Unit, onPick: (Stream) -> Unit) {
-    val list = rememberSources(type, videoId)
+    val src = rememberSources(type, videoId)
+    val list = src.list
     val fr = remember { FocusRequester() }
     LaunchedEffect(list) { if (!list.isNullOrEmpty()) runCatching { fr.requestFocus() } }
     Box(Modifier.fillMaxSize().background(C.Ink950.copy(alpha = 0.6f))) {
@@ -695,6 +707,11 @@ private fun SourcesSidePanel(type: String, videoId: String, onClose: () -> Unit,
             }
             VSpace(14.dp)
             when {
+                src.failed -> Column(Modifier.padding(24.dp)) {
+                    Text("تعذّر جلب المصادر. تأكد من الاتصال.", color = C.Muted)
+                    VSpace(12.dp)
+                    GoldButton("إعادة المحاولة", src.retry)
+                }
                 list == null -> Text("جارٍ البحث…", color = C.Muted, modifier = Modifier.padding(24.dp))
                 list.isEmpty() -> Text("لا توجد مصادر الآن.", color = C.Muted, modifier = Modifier.padding(24.dp))
                 else -> LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

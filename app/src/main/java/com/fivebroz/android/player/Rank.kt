@@ -74,6 +74,8 @@ fun describe(s: Stream, isTv: Boolean): StreamInfo {
         if (quality == "4K") score -= 40
     }
     if (cached) score += 100
+    // A plain web link from an addon starts like YouTube — always try it before a torrent.
+    if (s.url != null && !uncached) score += 120
     if (uncached) score -= 200
     score += when (quality) {
         "1080p" -> 40

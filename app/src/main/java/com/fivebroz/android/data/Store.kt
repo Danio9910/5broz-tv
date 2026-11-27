@@ -386,6 +386,47 @@ object Db {
         }
     }
 
+    // ---------- addons (shared by the whole household, like Stremio / Nuvio) ----------
+
+    data class Addon(val url: String, val name: String)
+
+    @Volatile private var addonCache: Pair<Long, List<String>>? = null
+
+    suspend fun addons(): List<Addon> = try {
+        select("household_addons?select=url,name&order=added_at.asc").mapObjects { r ->
+            Addon(r.str("url") ?: return@mapObjects null, r.str("name") ?: "")
+        }
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    /** Addon URLs for stream requests (cached a few minutes). */
+    suspend fun addonUrls(): List<String> {
+        addonCache?.let { (at, list) -> if (System.currentTimeMillis() - at < 5 * 60_000) return list }
+        val list = addons().map { it.url }
+        addonCache = System.currentTimeMillis() to list
+        return list
+    }
+
+    suspend fun addAddon(url: String, name: String): Boolean = try {
+        upsert(
+            "household_addons", "url",
+            JSONObject().put("url", url).put("name", name).put("added_by", Prefs.profileName.ifBlank { null } ?: JSONObject.NULL),
+        )
+        addonCache = null
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    suspend fun removeAddon(url: String) {
+        try {
+            Net.send("DELETE", "$URL/household_addons?url=eq.${q(url)}", null, headers)
+        } catch (_: Exception) {
+        }
+        addonCache = null
+    }
+
     // ---------- my list ----------
 
     suspend fun library(): List<Preview> {

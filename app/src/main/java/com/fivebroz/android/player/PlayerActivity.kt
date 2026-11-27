@@ -573,11 +573,11 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
 
     // ---------- playback ----------
 
-    private fun buildPlayer(): ExoPlayer {
+    private fun buildPlayer(headers: Map<String, String> = emptyMap()): ExoPlayer {
         // Torrent pieces can take a while to arrive, so allow long reads.
         val http = OkHttpDataSource.Factory(
             Net.client.newBuilder().readTimeout(150, java.util.concurrent.TimeUnit.SECONDS).build(),
-        )
+        ).setDefaultRequestProperties(headers)
         // Start with the subtitle choice this profile made last time.
         val lang = com.fivebroz.android.data.Prefs.subLang
         val selector = DefaultTrackSelector(this).apply {
@@ -709,9 +709,16 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         if (direct != null) {
             tried += group[0]
             stopTorrent()
+            val hdrs = candidates[group[0]].headers
             torrentJob = lifecycleScope.launch {
                 awaitSubs(1500)
-                playUrl(direct, positionSec)
+                playUrl(direct, positionSec, hdrs)
+                // A direct link that hasn't produced a picture in 15 s is dead or too slow: next.
+                delay(15_000)
+                if (overlay is Overlay.Loading) {
+                    Log.w("5broz", "direct link too slow, trying the next source")
+                    tryNext()
+                }
             }
             return
         }
@@ -793,9 +800,9 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         return MediaItem.Builder().setUri(url).setSubtitleConfigurations(subConfigs).build()
     }
 
-    private fun playUrl(url: String, positionSec: Long) {
+    private fun playUrl(url: String, positionSec: Long, headers: Map<String, String> = emptyMap()) {
         player?.release()
-        val p = buildPlayer()
+        val p = buildPlayer(headers)
         player = p
         playerView.player = p
         p.setPlaybackSpeed(ui.speed)

@@ -143,6 +143,7 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
     var askExitCode by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var join by remember { mutableStateOf(false) }
+    var addons by remember { mutableStateOf(false) }
     // Back from another tab returns home first, like every streaming app.
     androidx.activity.compose.BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
 
@@ -181,9 +182,16 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
             onDismiss = { menu = false },
             onSwitch = { menu = false; switchProfile() },
             onJoin = { menu = false; join = true },
+            onAddons = { menu = false; addons = true },
         )
     }
     if (join) JoinPartyDialog { join = false }
+    if (addons) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { addons = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) { AddonsScreen { addons = false } }
+    }
     if (askExitCode) {
         CodeDialog(
             title = "الخروج من وضع الأطفال",
@@ -243,6 +251,18 @@ private fun TvRail(tab: Tab, onTab: (Tab) -> Unit, onProfile: () -> Unit) {
             Icon(Icons.Join, null, Modifier.size(22.dp), tint = it)
         }
         if (join) JoinPartyDialog { join = false }
+        if (!Prefs.profileKids) {
+            var addons by remember { mutableStateOf(false) }
+            RailItem("الإضافات", false, open, { addons = true }) {
+                Icon(Icons.Sources, null, Modifier.size(22.dp), tint = it)
+            }
+            if (addons) {
+                androidx.compose.ui.window.Dialog(
+                    onDismissRequest = { addons = false },
+                    properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+                ) { AddonsScreen { addons = false } }
+            }
+        }
         RailItem(Prefs.profileName, false, open, onProfile) {
             Avatar(Prefs.current(), 26.dp)
         }
@@ -324,7 +344,7 @@ private fun PhoneBottomBar(tab: Tab, onTab: (Tab) -> Unit) {
 /** Phone: tapping your avatar opens a small sheet instead of leaving straight away. */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () -> Unit) {
+private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () -> Unit, onAddons: () -> Unit) {
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Ink900) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -337,6 +357,7 @@ private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () 
             Spacer(Modifier.height(18.dp))
             MenuRow(Icons.Join, "انضمام لغرفة مشاهدة", onJoin)
             MenuRow(Icons.Party, "تبديل الملف", onSwitch)
+            if (!Prefs.profileKids) MenuRow(Icons.Sources, "الإضافات", onAddons)
         }
     }
 }

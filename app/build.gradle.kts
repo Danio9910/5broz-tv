@@ -12,8 +12,8 @@ android {
         applicationId = "com.fivebroz.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 27
-        versionName = "3.3"
+        versionCode = 28
+        versionName = "3.4"
     }
 
     // The keystore is committed; its password lives only in the CI secret

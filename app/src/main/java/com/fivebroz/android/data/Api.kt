@@ -60,6 +60,8 @@ data class Stream(
     val source: String,
     val filename: String?,
     val sizeBytes: Long?,
+    /** Headers some addons require for their direct links (Referer, User-Agent…). */
+    val headers: Map<String, String> = emptyMap(),
 )
 
 data class Subtitle(val id: String, val url: String, val lang: String)
@@ -189,7 +191,7 @@ object Api {
 
     suspend fun streams(type: String, videoId: String): List<Stream> {
         val body = JSONObject().put("type", type).put("id", videoId)
-            .put("addons", org.json.JSONArray()).put("p2p", true)
+            .put("addons", org.json.JSONArray(Db.addonUrls())).put("p2p", true)
         return Net.postObj("$B/api/streams", body).optJSONArray("streams").mapObjects { s ->
             val url = s.str("url")
             val hash = s.str("infoHash")
@@ -206,6 +208,9 @@ object Api {
                 source = s.str("_source") ?: "",
                 filename = hints?.str("filename"),
                 sizeBytes = hints?.optLong("videoSize")?.takeIf { it > 0 },
+                headers = hints?.optJSONObject("proxyHeaders")?.optJSONObject("request")?.let { h ->
+                    h.keys().asSequence().associateWith { k -> h.optString(k) }.filterValues { it.isNotBlank() }
+                } ?: emptyMap(),
             )
         }
     }
