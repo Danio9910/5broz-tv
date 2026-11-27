@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
@@ -289,7 +290,7 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
         trailer = page to key
     }
     LaunchedEffect(pager.currentPage) { onPage(items.getOrNull(pager.currentPage)) }
-    Box(Modifier.fillMaxWidth().height(height)) {
+    Box(Modifier.fillMaxWidth().height(height).clipToBounds()) {
         HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
             val it = items[page]
             Box(Modifier.fillMaxSize()) {

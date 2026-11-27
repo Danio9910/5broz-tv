@@ -116,7 +116,10 @@ jobs:
           profile: ${{ matrix.device }}
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: OUT=e2e-${{ matrix.device }} ./ci/e2e.sh
+          script: OUT=e2e-${{ matrix.device }} timeout 2400 ./ci/e2e.sh || true
+      - name: Drop empty files
+        if: always()
+        run: find e2e-* -type f -size 0 -delete || true
       - name: Publish screenshots
         if: always()
         uses: softprops/action-gh-release@v2

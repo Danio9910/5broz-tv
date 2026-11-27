@@ -152,7 +152,7 @@ object Prefs {
         get() = sp.getBoolean("trailerBg", false)
         set(v) = sp.edit().putBoolean("trailerBg", v).apply()
     var heroTrailer: Boolean
-        get() = sp.getBoolean("heroTrailer", true)
+        get() = sp.getBoolean("heroTrailer", false)
         set(v) = sp.edit().putBoolean("heroTrailer", v).apply()
     var screensaver: Boolean
         get() = sp.getBoolean("saver", true)
