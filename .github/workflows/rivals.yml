@@ -1,0 +1,87 @@
+name: Rivals (5broz vs Stremio vs Nuvio)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ 'ci/rivals.sh', 'ci/find_any.py', '.github/workflows/rivals.yml' ]
+
+permissions:
+  contents: write
+
+jobs:
+  rivals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [phone, tv]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build 5broz (debug build — slower than the release the family uses)
+        run: chmod +x ./gradlew && ./gradlew assembleDebug --no-daemon
+      - name: Fetch Stremio and Nuvio (official downloads)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p apks
+          cp app/build/outputs/apk/debug/app-debug.apk apks/5broz.apk
+          if [ "${{ matrix.mode }}" = tv ]; then
+            curl -fL -o apks/stremio.apk https://dl.strem.io/android/v1.10.4-androidTV/com.stremio.one-1.10.4-32097156-x86.apk || true
+            REPO=NuvioMedia/NuvioTV; PREF='x86[^_]|x86\.apk|universal'
+          else
+            curl -fL -o apks/stremio.apk https://dl.strem.io/android/v2.3.2-android/com.stremio.one-2.3.2-8194306-x86_64.apk || true
+            REPO=NuvioMedia/NuvioMobile; PREF='x86_64|universal'
+          fi
+          gh release view -R $REPO --json tagName,assets --jq '.tagName, (.assets[].name)' | tee apks/nuvio-assets.txt || true
+          NAME=$(grep -iE '\.apk$' apks/nuvio-assets.txt | grep -iE "$PREF" | head -1)
+          [ -z "$NAME" ] && NAME=$(grep -iE '\.apk$' apks/nuvio-assets.txt | head -1)
+          echo "nuvio asset: $NAME"
+          [ -n "$NAME" ] && gh release download -R $REPO -p "$NAME" -O apks/nuvio.apk || true
+          ls -la apks
+          echo "$ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)" >> $GITHUB_PATH
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Phone emulator
+        if: matrix.mode == 'phone'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          target: google_apis
+          profile: pixel_5
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: MODE=phone OUT=rivals-phone APKS="5broz=apks/5broz.apk stremio=apks/stremio.apk nuvio=apks/nuvio.apk" timeout 2700 ./ci/rivals.sh || true
+      - name: TV emulator
+        if: matrix.mode == 'tv'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86
+          target: android-tv
+          profile: tv_1080p
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: MODE=tv OUT=rivals-tv APKS="5broz=apks/5broz.apk stremio=apks/stremio.apk nuvio=apks/nuvio.apk" timeout 2700 ./ci/rivals.sh || true
+      - name: Publish
+        if: always()
+        run: |
+          cp apks/nuvio-assets.txt rivals-${{ matrix.mode }}/ 2>/dev/null || true
+          find rivals-* -type f -size 0 -delete || true
+      - uses: softprops/action-gh-release@v2
+        if: always()
+        with:
+          tag_name: ci-rivals-${{ matrix.mode }}
+          name: Rivals comparison (${{ matrix.mode }})
+          prerelease: true
+          files: rivals-${{ matrix.mode }}/*
