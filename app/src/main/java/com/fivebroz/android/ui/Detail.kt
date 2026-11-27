@@ -369,6 +369,7 @@ private fun PhoneDetail(
                         // parallax: the picture moves at half speed and dims as it leaves
                         if (list.firstVisibleItemIndex == 0) translationY = list.firstVisibleItemScrollOffset * 0.5f
                         alpha = 1f - past * 0.6f
+                        clip = true
                     },
                 ) {
                     Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().kenBurns())

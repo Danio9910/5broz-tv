@@ -277,8 +277,10 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
     // Trailer preview: after the hero has rested on a title for a few seconds, its trailer plays muted.
     var trailer by remember { mutableStateOf<Pair<Int, String>?>(null) }
     var muted by remember { mutableStateOf(true) }
+    var trailerOn by remember { mutableStateOf(false) }
     LaunchedEffect(pager.currentPage, items) {
         trailer = null
+        trailerOn = false
         muted = true
         if (!Prefs.heroTrailer || Prefs.profileKids) return@LaunchedEffect
         val page = pager.currentPage
@@ -286,7 +288,6 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
         val key = runCatching { com.fivebroz.android.data.Api.detail(p.type, p.id)?.trailer }.getOrNull() ?: return@LaunchedEffect
         trailer = page to key
     }
-    LaunchedEffect(trailer) { onPage(items.getOrNull(pager.currentPage)) }
     LaunchedEffect(pager.currentPage) { onPage(items.getOrNull(pager.currentPage)) }
     Box(Modifier.fillMaxWidth().height(height)) {
         HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
@@ -295,7 +296,7 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
                 Img(if (wide) it.background ?: it.poster else it.poster ?: it.background, Modifier.fillMaxSize().kenBurns(), it.name)
                 trailer?.takeIf { t -> t.first == page }?.let { t ->
                     // a 16:9 video scaled to cover the hero
-                    TrailerBackground(t.second, Modifier.fillMaxSize().graphicsLayer { if (!wide) { scaleX = 2.2f; scaleY = 2.2f } }, muted = muted, enabled = true)
+                    TrailerBackground(t.second, Modifier.fillMaxSize().graphicsLayer { if (!wide) { scaleX = 2.2f; scaleY = 2.2f } }, muted = muted, enabled = true) { trailerOn = it }
                 }
                 Box(
                     Modifier.fillMaxSize().background(
@@ -335,7 +336,7 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
             GoldButton("التفاصيل", { onOpen(items[pager.currentPage]) }, filled = false, icon = Icons.Info)
         }
         if (items.size > 1) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp)) { Dots(items.size, pager.currentPage) }
-        if (trailer?.first == pager.currentPage) {
+        if (trailerOn && trailer?.first == pager.currentPage) {
             Focusable({ muted = !muted }, Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 30.dp), shape = CircleShape, lift = 1.05f, ring = false) {
                 Box(Modifier.size(36.dp).background(C.Ink950.copy(alpha = 0.55f)).border(1.dp, C.Paper.copy(alpha = 0.3f), CircleShape), contentAlignment = Alignment.Center) {
                     Ic(if (muted) Icons.Mute else Icons.Sound, 18.dp)

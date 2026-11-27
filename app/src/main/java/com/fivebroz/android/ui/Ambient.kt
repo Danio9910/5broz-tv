@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -77,42 +78,58 @@ fun Screensaver(items: List<Preview>) {
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun TrailerBackground(key: String?, modifier: Modifier, muted: Boolean = true, enabled: Boolean = com.fivebroz.android.data.Prefs.trailerBackground) {
+fun TrailerBackground(
+    key: String?,
+    modifier: Modifier,
+    muted: Boolean = true,
+    enabled: Boolean = com.fivebroz.android.data.Prefs.trailerBackground,
+    onPlaying: (Boolean) -> Unit = {},
+) {
     if (key == null || !enabled) return
-    var show by remember { mutableStateOf(false) }
+    var load by remember { mutableStateOf(false) }
+    // Only shown once YouTube reports real playback, so a blocked or slow video never covers the picture.
+    var playing by remember(key) { mutableStateOf(false) }
     LaunchedEffect(key) {
         delay(3500)
-        show = true
+        load = true
     }
-    AnimatedVisibility(show, modifier, enter = fadeIn(tween(1200)), exit = fadeOut()) {
-        AndroidView(
-            factory = { ctx ->
-                WebView(ctx).apply {
-                    setBackgroundColor(android.graphics.Color.BLACK)
-                    settings.javaScriptEnabled = true
-                    settings.mediaPlaybackRequiresUserGesture = false
-                    webChromeClient = WebChromeClient()
-                    isFocusable = false
-                    val html = """
-                        <html><body style="margin:0;background:#000;overflow:hidden">
-                        <iframe width="100%" height="100%" frameborder="0" allow="autoplay; encrypted-media"
-                          src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&loop=1&playlist=$key&modestbranding=1&playsinline=1&rel=0&iv_load_policy=3&enablejsapi=1"></iframe>
-                        </body></html>
-                    """.trimIndent()
-                    loadDataWithBaseURL("https://www.5broz.com", html, "text/html", "utf-8", null)
-                }
-            },
-            update = { w ->
-                // the YouTube player takes commands by postMessage
-                val cmd = if (muted) "mute" else "unMute"
-                w.evaluateJavascript(
-                    "var f=document.querySelector('iframe');if(f){f.contentWindow.postMessage(JSON.stringify({event:'command',func:'$cmd',args:[]}),'*');" +
-                        (if (muted) "" else "f.contentWindow.postMessage(JSON.stringify({event:'command',func:'setVolume',args:[100]}),'*');") + "}",
-                    null,
-                )
-            },
-            onRelease = { it.destroy() },
-            modifier = Modifier.fillMaxSize(),
-        )
-    }
+    LaunchedEffect(playing) { onPlaying(playing) }
+    if (!load) return
+    val a by androidx.compose.animation.core.animateFloatAsState(if (playing) 1f else 0f, tween(1200), label = "trailer")
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                settings.javaScriptEnabled = true
+                settings.mediaPlaybackRequiresUserGesture = false
+                webChromeClient = WebChromeClient()
+                isFocusable = false
+                addJavascriptInterface(object {
+                    @android.webkit.JavascriptInterface
+                    fun state(s: Int) { post { playing = s == 1 || (playing && s == 3) } }
+                }, "Bridge")
+                val html = """
+                    <html><body style="margin:0;background:transparent;overflow:hidden">
+                    <div id="p" style="width:100%;height:100%"></div>
+                    <script src="https://www.youtube.com/iframe_api"></script>
+                    <script>
+                      var player;
+                      function onYouTubeIframeAPIReady(){
+                        player = new YT.Player('p',{width:'100%',height:'100%',videoId:'$key',host:'https://www.youtube-nocookie.com',
+                          playerVars:{autoplay:1,mute:1,controls:0,loop:1,playlist:'$key',modestbranding:1,playsinline:1,rel:0,iv_load_policy:3,disablekb:1},
+                          events:{onReady:function(e){e.target.mute();e.target.playVideo();},
+                                  onStateChange:function(e){Bridge.state(e.data);},
+                                  onError:function(){Bridge.state(-2);}}});
+                      }
+                      function setMuted(m){ if(!player||!player.mute) return; if(m){player.mute();} else {player.unMute();player.setVolume(100);} }
+                    </script>
+                    </body></html>
+                """.trimIndent()
+                loadDataWithBaseURL("https://www.5broz.com", html, "text/html", "utf-8", null)
+            }
+        },
+        update = { w -> w.evaluateJavascript("setMuted(${if (muted) "true" else "false"})", null) },
+        onRelease = { it.destroy() },
+        modifier = modifier.graphicsLayer { alpha = a },
+    )
 }

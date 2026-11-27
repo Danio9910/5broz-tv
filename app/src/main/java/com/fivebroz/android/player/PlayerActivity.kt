@@ -1378,7 +1378,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         val ep = allEpisodes.firstOrNull { it.id == args.videoId }
         Box(
             Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.88f), 0.6f to Color.Black.copy(alpha = 0.55f), 1f to Color.Black.copy(alpha = 0.2f)),
+                // dark where the text sits (the right, in Arabic), fading toward the picture
+                Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.25f), 0.45f to Color.Black.copy(alpha = 0.6f), 1f to Color.Black.copy(alpha = 0.9f)),
             ),
         ) {
             Column(
@@ -1436,8 +1437,10 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                             pausedLong = true
                         }
                     }
+                    val pauseShown = pausedLong && !ui.visible
+                    LaunchedEffect(pauseShown) { playerView.subtitleView?.visibility = if (pauseShown) android.view.View.INVISIBLE else android.view.View.VISIBLE }
                     androidx.compose.animation.AnimatedVisibility(
-                        pausedLong && !ui.visible,
+                        pauseShown,
                         enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(700)),
                         exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200)),
                     ) { PauseScreen() }
