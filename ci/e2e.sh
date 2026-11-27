@@ -161,6 +161,9 @@ adb push /tmp/5broz-upd.xml /data/local/tmp/5broz-upd.xml
 adb shell "cat /data/local/tmp/5broz-upd.xml | run-as $PKG sh -c 'cat > shared_prefs/5broz.xml'"
 # The test build downloads a 3 MB file that the server drips out over 150 s,
 # so most of it can only arrive while the screen is off.
+# Keep the playback log (with TIMING lines) before the update test clears it.
+adb logcat -d -s 5broz:V AndroidRuntime:E > $OUT/play-log.txt
+grep -E "TIMING|PLAYER READY|race|player error" $OUT/play-log.txt > $OUT/timing.txt; echo end >> $OUT/timing.txt
 adb logcat -c
 adb shell am start -n $PKG/.MainActivity; sleep 14; shot 13-update-offer
 tap_text "تحديث الآن"

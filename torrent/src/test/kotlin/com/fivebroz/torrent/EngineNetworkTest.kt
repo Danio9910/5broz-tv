@@ -67,4 +67,37 @@ class EngineNetworkTest {
             engine.shutdown()
         }
     }
+
+    /**
+     * Racing: a dead torrent (nobody shares it) and a live one are started together;
+     * the live one must win, and quickly — a dead first choice must not cost the viewer anything.
+     */
+    @Test
+    fun raceSkipsDeadSource() {
+        val index = String(get("https://releases.ubuntu.com/24.04/"))
+        val name = Regex("""href="(ubuntu-[^"]*live-server-amd64\.iso\.torrent)"""").find(index)!!.groupValues[1]
+        val hash = TorrentInfo.bdecode(get("https://releases.ubuntu.com/24.04/$name")).infoHash().toHex()
+        val dead = "0123456789abcdef0123456789abcdef01234567"
+        val engine = TorrentEngine(File("build/engine-race"))
+        try {
+            val w0 = System.currentTimeMillis()
+            engine.warmUp()
+            println("ENGINE-TEST warm-up ${System.currentTimeMillis() - w0} ms")
+            Thread.sleep(3000) // the app warms up while the person browses
+            val t0 = System.currentTimeMillis()
+            val (winner, url) = engine.openFastest(
+                listOf(TorrentEngine.magnet(dead, emptyList()) to null, TorrentEngine.magnet(hash, emptyList()) to null),
+                timeoutSec = 120,
+            )
+            val ms = System.currentTimeMillis() - t0
+            println("ENGINE-TEST race winner=$winner first-piece in $ms ms ${engine.status()}")
+            assertEquals(1, winner)
+            val (code, head, ms1) = range(url, 32768, 32768 + 2047)
+            println("ENGINE-TEST race read http=$code in $ms1 ms")
+            assertEquals("CD001", String(head, 1, 5, Charsets.US_ASCII))
+            println("ENGINE-TEST RACE PASSED time-to-first-piece=${ms}ms")
+        } finally {
+            engine.shutdown()
+        }
+    }
 }

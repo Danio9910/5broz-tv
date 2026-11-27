@@ -3,6 +3,7 @@ package com.fivebroz.torrent
 import org.libtorrent4j.Priority
 import org.libtorrent4j.SessionHandle
 import org.libtorrent4j.SessionManager
+import org.libtorrent4j.Sha1Hash
 import org.libtorrent4j.TorrentFlags
 import org.libtorrent4j.TorrentHandle
 import org.libtorrent4j.TorrentInfo
@@ -68,53 +69,106 @@ class TorrentEngine(private val workDir: File) {
         }
 
     /**
+     * Starts the BitTorrent session (and its DHT) ahead of time, so the first
+     * film doesn't wait for the network to warm up. Safe to call repeatedly.
+     */
+    fun warmUp() {
+        session()
+    }
+
+    /** One candidate torrent while several race to start. */
+    private class Slot(val index: Int, val infoHash: String, val fileIdx: Int?) {
+        var th: TorrentHandle? = null
+        var ready = false // file chosen, first pieces requested
+        var idx = 0
+        var first = 0
+        var last = 0
+    }
+
+    /**
      * Resolves the magnet, starts downloading the chosen file in order, and
      * returns a local http:// URL the player can open. Blocks (call off the UI thread).
      */
-    fun open(magnet: String, fileIdx: Int?, metadataTimeoutSec: Int = 45): String {
+    fun open(magnet: String, fileIdx: Int?, metadataTimeoutSec: Int = 45): String =
+        openFastest(listOf(magnet to fileIdx), metadataTimeoutSec).second
+
+    /**
+     * Adds every candidate at once and keeps the one whose first piece of video
+     * arrives first; the others are dropped. The same connection that fetched the
+     * metadata keeps downloading (no second round of peer discovery).
+     * Returns (index of the winner in [items], local URL).
+     */
+    fun openFastest(items: List<Pair<String, Int?>>, timeoutSec: Int = 60): Pair<Int, String> {
+        closeCurrent()
         closed = false
         workDir.mkdirs()
         val s = session()
-
-        val data = s.fetchMagnet(magnet, metadataTimeoutSec, workDir)
-            ?: throw IOException("no metadata (no peers found)")
-        val ti = TorrentInfo.bdecode(data)
+        val slots = items.mapIndexed { i, (magnet, idx) ->
+            val hash = Regex("btih:([0-9a-fA-F]{40})").find(magnet)?.groupValues?.get(1)?.lowercase()
+                ?: throw IOException("bad magnet")
+            Slot(i, hash, idx).also { s.download(magnet, workDir, TorrentFlags.SEQUENTIAL_DOWNLOAD) }
+        }
+        val until = System.currentTimeMillis() + timeoutSec * 1000L
+        var winner: Slot? = null
+        try {
+            while (winner == null) {
+                if (closed) throw IOException("closed")
+                if (System.currentTimeMillis() > until) throw IOException("no source started in ${timeoutSec}s")
+                for (sl in slots) {
+                    val th = sl.th ?: s.find(Sha1Hash(sl.infoHash))?.also { sl.th = it } ?: continue
+                    if (!th.isValid) continue
+                    if (!sl.ready) {
+                        if (!th.status().hasMetadata()) continue
+                        val ti = th.torrentFile() ?: continue
+                        prepare(sl, th, ti)
+                    }
+                    if (th.havePiece(sl.first)) {
+                        winner = sl
+                        break
+                    }
+                }
+                if (winner == null) Thread.sleep(80)
+            }
+        } finally {
+            for (sl in slots) if (sl !== winner) sl.th?.let { runCatching { s.remove(it, SessionHandle.DELETE_FILES) } }
+        }
+        val w = winner!!
+        val ti = w.th!!.torrentFile()
         val fs = ti.files()
-        val n = fs.numFiles()
-
-        // Use the file the addon pointed at; otherwise the largest one.
-        val idx = if (fileIdx != null && fileIdx in 0 until n) fileIdx
-        else (0 until n).maxByOrNull { fs.fileSize(it) } ?: 0
-
-        fileOffset = fs.fileOffset(idx)
-        fileSize = fs.fileSize(idx)
-        fileName = fs.fileName(idx)
+        fileOffset = fs.fileOffset(w.idx)
+        fileSize = fs.fileSize(w.idx)
+        fileName = fs.fileName(w.idx)
         pieceLength = ti.pieceLength()
         numPieces = ti.numPieces()
-        file = File(workDir, fs.filePath(idx))
+        file = File(workDir, fs.filePath(w.idx))
+        handle = w.th
+        val srv = StreamServer(this)
+        server = srv
+        return w.index to srv.start()
+    }
 
-        val priorities = Array(n) { if (it == idx) Priority.DEFAULT else Priority.IGNORE }
-        s.download(ti, workDir, null, priorities, null, TorrentFlags.SEQUENTIAL_DOWNLOAD)
-
-        var th: TorrentHandle? = null
-        val until = System.currentTimeMillis() + 10_000
-        while (th == null && System.currentTimeMillis() < until) {
-            th = s.find(ti.infoHash())
-            if (th == null) Thread.sleep(50)
-        }
-        handle = th ?: throw IOException("torrent did not start")
-
+    /** Metadata is in: pick the video file and ask for its first and last pieces. */
+    private fun prepare(sl: Slot, th: TorrentHandle, ti: TorrentInfo) {
+        val fs = ti.files()
+        val n = fs.numFiles()
+        // Use the file the addon pointed at; otherwise the largest one.
+        val idx = if (sl.fileIdx != null && sl.fileIdx in 0 until n) sl.fileIdx
+        else (0 until n).maxByOrNull { fs.fileSize(it) } ?: 0
+        th.prioritizeFiles(Array(n) { if (it == idx) Priority.DEFAULT else Priority.IGNORE })
+        val off = fs.fileOffset(idx)
+        val size = fs.fileSize(idx)
+        val pl = ti.pieceLength().toLong()
+        val first = (off / pl).toInt()
+        val last = ((off + size - 1) / pl).toInt()
         // Video containers keep their index at the start and often at the end:
         // fetch both first so the player can start and seek immediately.
-        val first = pieceOf(0)
-        val last = pieceOf(fileSize - 1)
         for (i in 0 until 4) if (first + i <= last) th.setPieceDeadline(first + i, 300 * i)
         th.setPieceDeadline(last, 500)
         if (last - 1 > first) th.setPieceDeadline(last - 1, 600)
-
-        val srv = StreamServer(this)
-        server = srv
-        return srv.start()
+        sl.idx = idx
+        sl.first = first
+        sl.last = last
+        sl.ready = true
     }
 
     fun status(): TorrentStatus {
@@ -165,6 +219,10 @@ class TorrentEngine(private val workDir: File) {
     /** Stops the download and deletes what was fetched. */
     fun close() {
         closed = true
+        closeCurrent()
+    }
+
+    private fun closeCurrent() {
         server?.stop()
         server = null
         val th = handle

@@ -31,6 +31,8 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.rgb(10, 10, 11)),
         )
         Prefs.init(applicationContext)
+        // Start the torrent engine's network while the person is still browsing.
+        com.fivebroz.android.player.StreamPrefetch.warmEngine(this)
         // A title link (TV home screen) only opens for a device that's already set up.
         if (intent?.data != null && (!Prefs.gatePassed || Prefs.profileId == null)) intent = intent.setData(null)
         // Phones browse upright like other streaming apps (the player rotates on its own).

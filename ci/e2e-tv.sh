@@ -38,5 +38,17 @@ key DPAD_CENTER 70; shot tv7-player
 key BACK 1; key BACK 3
 adb shell content query --uri content://android.media.tv/watch_next_program --projection title:last_playback_position_millis:intent_uri > $OUT/watchnext.txt 2>&1
 echo "--- end ---" >> $OUT/watchnext.txt
+adb logcat -d -s 5broz:V | grep -E "TIMING|PLAYER READY|race|player error" | sed "s|^|movie/tt0111161 |" > $OUT/timing.txt
+# Time-to-picture on more titles: a classic, a recent film and a series.
+for T in movie/tt15239678 series/tt0903747 movie/tt1375666; do
+  adb shell am force-stop $PKG; sleep 2
+  adb logcat -c
+  adb shell am start -a android.intent.action.VIEW -d "fivebroz://title/$T" $PKG
+  sleep 10; key DPAD_CENTER 1
+  for i in $(seq 1 45); do adb logcat -d -s 5broz:V | grep -q "PLAYER READY" && break; sleep 2; done
+  N=$(echo $T | tr / -); shot tv8-$N
+  adb logcat -d -s 5broz:V | grep -E "TIMING|PLAYER READY|race|player error" | sed "s|^|$T |" >> $OUT/timing.txt
+done
+echo end >> $OUT/timing.txt
 adb logcat -d -s 5broz:V AndroidRuntime:E > $OUT/logcat.txt; echo "--- end ---" >> $OUT/logcat.txt
 exit 0

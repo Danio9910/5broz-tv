@@ -192,8 +192,10 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
     var available by remember(mainVideo) { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(mainVideo) {
         if (mainVideo != null && canPlay) {
+            // The same request doubles as the prefetch the player uses when play is pressed.
+            com.fivebroz.android.player.StreamPrefetch.warm(ctx, d.base.type, mainVideo)
             available = try {
-                Api.streams(d.base.type, mainVideo).isNotEmpty()
+                com.fivebroz.android.player.StreamPrefetch.result(d.base.type, mainVideo)?.isNotEmpty()
             } catch (_: Exception) {
                 null
             }

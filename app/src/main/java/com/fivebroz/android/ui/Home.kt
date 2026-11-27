@@ -158,7 +158,7 @@ private fun PhoneHome(
                 item("sk") { SkeletonRows(g) }
             } else {
                 item("health") { HealthNotice(g) }
-                if (resume.isNotEmpty()) item("resume") { ContinueRow(resume, onOpen, g) }
+                if (resume.isNotEmpty()) item("resume") { ContinueRow(resume, g) }
                 if (home.top10.isNotEmpty()) item("top10") {
                     PosterRow(top10Title(kids, family), home.top10, onOpen, g, ranked = true)
                 }
@@ -187,10 +187,6 @@ fun HealthNotice(g: Dp) {
             !h.catalog -> "قائمة الأفلام لا تستجيب الآن — حاول بعد قليل."
             !h.torrents && !h.debridActive -> "مصادر التشغيل لا تستجيب الآن — حاول بعد قليل."
             h.daysLeft != null && h.daysLeft in 0..5 -> "اشتراك Real-Debrid ينتهي خلال ${h.daysLeft} أيام."
-            !h.debridActive && !Prefs.seenDebridNotice -> {
-                Prefs.seenDebridNotice = true
-                "التشغيل يعمل الآن عبر التورنت — قد يستغرق البدء ثوانٍ أطول."
-            }
             else -> null
         }
     }
@@ -285,7 +281,8 @@ private fun Dots(n: Int, current: Int) {
 }
 
 @Composable
-private fun ContinueRow(resume: List<ResumeItem>, onOpen: (Preview) -> Unit, g: Dp, onFocusItem: ((Preview) -> Unit)? = null) {
+private fun ContinueRow(resume: List<ResumeItem>, g: Dp, onFocusItem: ((Preview) -> Unit)? = null) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val w = if (LocalIsTv.current) 260.dp else 210.dp
     Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
         SectionTitle("متابعة المشاهدة — ${Prefs.profileName}", Modifier.padding(horizontal = g, vertical = 6.dp))
@@ -295,7 +292,7 @@ private fun ContinueRow(resume: List<ResumeItem>, onOpen: (Preview) -> Unit, g: 
         ) {
             itemsIndexed(resume, key = { i, r -> "${r.videoId}#$i" }) { _, r ->
                 WideCard(
-                    r.item, w, { onOpen(r.item) },
+                    r.item, w, { resumePlay(ctx, r) },
                     progress = r.progress,
                     subtitle = episodeTag(r.videoId),
                     onFocus = onFocusItem?.let { f -> { f(r.item) } },
@@ -303,6 +300,22 @@ private fun ContinueRow(resume: List<ResumeItem>, onOpen: (Preview) -> Unit, g: 
             }
         }
     }
+}
+
+/** Continue watching goes straight back into the film — no page in between. */
+fun resumePlay(ctx: android.content.Context, r: ResumeItem) {
+    val p = r.videoId.split(":")
+    com.fivebroz.android.player.PlayerActivity.start(
+        ctx,
+        com.fivebroz.android.player.PlayArgs(
+            type = r.item.type,
+            metaId = r.item.id,
+            name = r.item.name,
+            poster = r.item.poster,
+            videoId = r.videoId,
+            label = if (p.size == 3) "م${p[1]} ح${p[2]}" else "",
+        ),
+    )
 }
 
 /** "tt123:2:5" -> "الموسم ٢ · الحلقة ٥" */
@@ -323,6 +336,7 @@ private fun TvHome(
     onOpen: (Preview) -> Unit,
 ) {
     val g = gutter()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     if (home == null) {
         Column(Modifier.fillMaxSize().padding(top = 40.dp)) {
             Skeleton(Modifier.padding(horizontal = g).size(420.dp, 44.dp))
@@ -411,7 +425,7 @@ private fun TvHome(
                         val fr = claim()
                         item("resume") {
                             CompositionLocalProvider(LocalBringIntoViewSpec provides defaultSpec) {
-                                TvWideRow("متابعة المشاهدة", resume.map { it.item }, resume.map { it.progress }, onOpen, g, fr) { focused = it }
+                                TvWideRow("متابعة المشاهدة", resume.map { it.item }, resume.map { it.progress }, { p -> resume.firstOrNull { it.item.id == p.id }?.let { resumePlay(ctx, it) } }, g, fr) { focused = it }
                             }
                         }
                     }

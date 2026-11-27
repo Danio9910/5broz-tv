@@ -149,7 +149,6 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     private var candidates: List<Stream> = emptyList()
     private var torrentJob: Job? = null
     private val engine by lazy { Torrents.get(this) }
-    private var attempt = 0
     private var startedAt = 0L
     private var saveJob: Job? = null
     private var nextJob: Job? = null
@@ -615,7 +614,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                     }
 
                     override fun onPlaybackStateChanged(state: Int) {
-                        if (state == Player.STATE_READY) Log.i("5broz", "PLAYER READY pos=${p.currentPosition}")
+                        if (state == Player.STATE_READY) Log.i("5broz", "PLAYER READY pos=${p.currentPosition} TIMING tap-to-picture ${System.currentTimeMillis() - launchedAt} ms")
                         if (state == Player.STATE_READY && overlay is Overlay.Loading) overlay = Overlay.None
                         if (state == Player.STATE_ENDED) onEnded()
                     }
@@ -627,78 +626,127 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     private var skipped = false
 
     private fun begin() {
-        overlay = Overlay.Loading("جارٍ تجهيز أفضل مصدر…")
-        attempt = 0
+        overlay = Overlay.Loading("جارٍ التحضير…")
+        tried.clear()
+        launchedAt = System.currentTimeMillis()
         lifecycleScope.launch {
-            val subsAsync = async { Api.subtitles(args.type, args.videoId) }
+            subsAsync = async { runCatching { Api.subtitles(args.type, args.videoId) }.getOrDefault(emptyList()) }
+            val resumeAsync = async { Db.resumePosition(args.videoId) }
             val ranked = try {
-                rank(Api.streams(args.type, args.videoId), isTv).map { it.stream }
+                // Usually already fetched while the title page was open.
+                rank(StreamPrefetch.take(args.type, args.videoId) ?: Api.streams(args.type, args.videoId), isTv).map { it.stream }
             } catch (_: Exception) {
                 emptyList()
             }
             val picked = pendingPick.also { pendingPick = null }
+            userPicked = picked != null
             candidates = (listOfNotNull(picked) + ranked)
                 .distinctBy { it.url ?: it.infoHash }
-                .take(6)
-            Log.i("5broz", "candidates=${candidates.size} torrents=${candidates.count { it.url == null }}")
+                .take(8)
+            Log.i("5broz", "TIMING sources in ${System.currentTimeMillis() - launchedAt} ms; candidates=${candidates.size} torrents=${candidates.count { it.url == null }}")
             if (candidates.isEmpty()) {
                 overlay = Overlay.Failed("لم نجد مصدراً جاهزاً لهذا العنوان الآن.")
                 return@launch
             }
-            subs = withTimeoutOrNull(6000) { subsAsync.await() } ?: emptyList()
-            val resume = Db.resumePosition(args.videoId)
-            play(candidates[0], resume)
+            playNextGroup(resumeAsync.await())
+        }
+        // Started from "continue watching": work out the following episodes for autoplay.
+        if (args.type == "series" && args.queueIds.isEmpty() && partyId == null) {
+            lifecycleScope.launch {
+                val d = runCatching { Api.detail(args.type, args.metaId) }.getOrNull() ?: return@launch
+                val eps = d.episodes.filter { it.season > 0 }
+                val after = eps.dropWhile { it.id != args.videoId }.drop(1).take(30)
+                if (after.isNotEmpty() && args.queueIds.isEmpty()) {
+                    args = args.copy(
+                        queueIds = ArrayList(after.map { it.id }),
+                        queueLabels = ArrayList(after.map { e -> "م${e.season} · ح${e.episode}" + if (e.title.isNotBlank()) " — ${e.title}" else "" }),
+                    )
+                }
+            }
         }
     }
 
-    /** Direct links play straight away; torrents go through the built-in engine first. */
-    private fun play(stream: Stream, positionSec: Long) {
+    // ---- choosing among sources ----
+    private val tried = mutableSetOf<Int>()
+    private var userPicked = false
+    private var launchedAt = 0L
+    private var subsAsync: kotlinx.coroutines.Deferred<List<Subtitle>>? = null
+
+    /**
+     * The next sources to try: a direct link alone, or up to three torrents raced
+     * together (whichever starts sending video first is played — like trying three
+     * doors at once instead of waiting at each one).
+     */
+    private fun nextGroup(): List<Int> {
+        val rest = candidates.indices.filter { it !in tried }
+        if (rest.isEmpty()) return emptyList()
+        val head = rest.first()
+        if (candidates[head].url != null) return listOf(head)
+        if (userPicked && tried.isEmpty()) return listOf(head) // the person chose this exact source
+        return rest.filter { candidates[it].url == null }.take(3)
+    }
+
+    private fun playNextGroup(positionSec: Long) {
         torrentJob?.cancel()
-        val direct = stream.url
-        if (direct != null) {
-            stopTorrent()
-            playUrl(direct, positionSec)
+        val group = nextGroup()
+        if (group.isEmpty()) {
+            overlay = Overlay.Failed("تعذّر تشغيل المصادر المتاحة على هذا الجهاز.")
+            player?.stop()
             return
         }
-        val hash = stream.infoHash ?: return tryNext()
+        val direct = candidates[group[0]].url
+        if (direct != null) {
+            tried += group[0]
+            stopTorrent()
+            torrentJob = lifecycleScope.launch {
+                awaitSubs(1500)
+                playUrl(direct, positionSec)
+            }
+            return
+        }
         if (!torrentSupported) {
             // A processor the torrent engine wasn't built for: say so instead of crashing.
             overlay = Overlay.Failed("هذا الجهاز لا يدعم التشغيل عبر التورنت.")
             return
         }
         player?.stop()
-        overlay = Overlay.Loading("جارٍ الاتصال بشبكة التورنت…")
+        if (overlay !is Overlay.Loading) overlay = Overlay.Loading("جارٍ التحضير…")
         torrentJob = lifecycleScope.launch {
             // Live progress while peers are found and the first pieces arrive.
             val ticker = launch {
                 while (true) {
                     delay(1000)
                     val st = engine.status()
-                    if (overlay is Overlay.Loading) {
-                        overlay = Overlay.Loading(
-                            if (st.peers == 0) "جارٍ البحث عن مصادر…"
-                            else "متصل بـ ${st.peers} مصدر · ${"%.1f".format(st.bytesPerSec / 1_048_576f)} م.ب/ث",
-                        )
+                    if (overlay is Overlay.Loading && st.peers > 0) {
+                        overlay = Overlay.Loading("جارٍ التحضير… ${"%.1f".format(java.util.Locale.US, st.bytesPerSec / 1_048_576f)} م.ب/ث")
                     }
                 }
             }
-            Log.i("5broz", "torrent open $hash idx=${stream.fileIdx}")
-            val local = try {
-                withContext(Dispatchers.IO) {
-                    engine.close()
-                    engine.open(TorrentEngine.magnet(hash, stream.trackers), stream.fileIdx)
-                }
+            val items = group.map { i -> candidates[i].let { TorrentEngine.magnet(it.infoHash!!, it.trackers) to it.fileIdx } }
+            val t0 = System.currentTimeMillis()
+            val result = try {
+                withContext(Dispatchers.IO) { engine.openFastest(items, timeoutSec = if (group.size > 1) 50 else 40) }
             } catch (e: Exception) {
-                Log.w("5broz", "torrent failed: ${e.message}")
+                Log.w("5broz", "torrent race failed: ${e.message}")
                 null
             }
-            Log.i("5broz", "torrent ready url=$local file=${engine.fileName} ${engine.status()}")
             ticker.cancel()
-            if (local == null) tryNext() else {
-                overlay = Overlay.Loading("جارٍ التحميل المسبق…")
-                playUrl(local, positionSec)
+            if (result == null) {
+                tried += group // none of them started
+                playNextGroup(positionSec)
+                return@launch
             }
+            val (w, local) = result
+            tried += group[w]
+            Log.i("5broz", "TIMING first piece in ${System.currentTimeMillis() - t0} ms (race of ${group.size}, winner #${group[w]}) total ${System.currentTimeMillis() - launchedAt} ms file=${engine.fileName}")
+            awaitSubs(1200)
+            overlay = Overlay.Loading("لحظات…")
+            playUrl(local, positionSec)
         }
+    }
+
+    private suspend fun awaitSubs(ms: Long) {
+        subs = withTimeoutOrNull(ms) { subsAsync?.await() } ?: subs
     }
 
     private fun stopTorrent() {
@@ -759,14 +807,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
 
     private fun tryNext() {
         val pos = (player?.currentPosition ?: 0) / 1000
-        attempt++
-        if (attempt >= candidates.size) {
-            overlay = Overlay.Failed("تعذّر تشغيل المصادر المتاحة على هذا الجهاز.")
-            player?.stop()
-            return
-        }
-        overlay = Overlay.Loading("المصدر لم يعمل — نجرّب مصدراً آخر…")
-        play(candidates[attempt], pos)
+        overlay = Overlay.Loading("نجرّب مصدراً آخر…")
+        playNextGroup(pos)
     }
 
     private fun startSaving() {

@@ -64,8 +64,14 @@ fun describe(s: Stream, isTv: Boolean): StreamInfo {
             seeds >= 5 -> 20
             else -> -60
         }
-        if (gb != null && gb > 8) score -= 40 // huge files start slowly and fill storage
-        if (quality == "4K") score -= 30
+        // Big files start slowly and stutter on ordinary connections.
+        if (gb != null) score -= when {
+            gb > 12 -> 70
+            gb > 6 -> 35
+            gb > 4 -> 10
+            else -> 0
+        }
+        if (quality == "4K") score -= 40
     }
     if (cached) score += 100
     if (uncached) score -= 200
@@ -75,11 +81,14 @@ fun describe(s: Stream, isTv: Boolean): StreamInfo {
         "720p" -> 20
         else -> 0
     }
-    // Skip files this device can't decode (instead of trying and failing).
+    // H.264 plays everywhere, instantly. HEVC (x265) often fails or stutters even on
+    // devices that claim to support it — so it's only a fallback.
     val isHevc = Regex("""\b(x265|h\.?265|hevc)\b""").containsMatchIn(low)
     val is10 = Regex("""\b10[ -]?bit\b""").containsMatchIn(low)
-    if (isHevc && !Caps.hevc) score -= 120
-    if (isHevc && is10 && !Caps.hevc10) score -= 120
+    val isAvc = Regex("""\b(x264|h\.?264|avc)\b""").containsMatchIn(low) || "yts" in low || "yify" in low
+    if (isAvc) score += 30
+    if (isHevc) score -= if (Caps.hevc) 45 else 150
+    if (isHevc && is10) score -= if (Caps.hevc10) 30 else 120
     if (dv) score -= 30 // Dolby Vision shows wrong colours on many devices
     if (Regex("""\b(cam|hdcam|ts|telesync)\b""").containsMatchIn(low)) score -= 150
     if (gb != null && gb > 25) score -= 20
