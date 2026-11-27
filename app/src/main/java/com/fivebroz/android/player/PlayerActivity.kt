@@ -204,6 +204,25 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         setContentView(root)
 
         begin()
+        // Debug builds: if loading ever stalls, write where every thread is stuck to the log.
+        if (com.fivebroz.android.BuildConfig.DEBUG) {
+            Thread({
+                var since = 0L
+                while (!isDestroyed) {
+                    Thread.sleep(5000)
+                    val loading = overlay is Overlay.Loading
+                    since = if (loading) (if (since == 0L) System.currentTimeMillis() else since) else 0L
+                    if (since > 0 && System.currentTimeMillis() - since > 40_000) {
+                        since = System.currentTimeMillis() // again in 40 s
+                        Thread.getAllStackTraces().forEach { (t, st) ->
+                            if (t.name == "main" || t.name.startsWith("DefaultDispatcher") || t.name.contains("torrent")) {
+                                Log.w("5broz", "STALL ${t.name} ${t.state}: " + st.take(14).joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" })
+                            }
+                        }
+                    }
+                }
+            }, "stall-watch").apply { isDaemon = true }.start()
+        }
         // Keep the on-screen clock and auto-hide in step with playback.
         lifecycleScope.launch {
             while (true) {
