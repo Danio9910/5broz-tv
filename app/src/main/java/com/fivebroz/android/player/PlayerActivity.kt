@@ -1003,7 +1003,10 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             val items = group.map { i -> candidates[i].let { TorrentEngine.magnet(it.infoHash!!, it.trackers) to it.fileIdx } }
             val t0 = System.currentTimeMillis()
             val result = try {
-                withContext(Dispatchers.IO) { engine.openFastest(items, timeoutSec = if (group.size > 1) 50 else 40) }
+                // Belt and braces: never sit on "preparing" longer than the race allows.
+                withTimeoutOrNull(if (group.size > 1) 58_000L else 48_000L) {
+                    withContext(Dispatchers.IO) { engine.openFastest(items, timeoutSec = if (group.size > 1) 50 else 40) }
+                } ?: throw java.io.IOException("race did not return")
             } catch (e: Exception) {
                 Log.w("5broz", "torrent race failed: ${e.message}")
                 null

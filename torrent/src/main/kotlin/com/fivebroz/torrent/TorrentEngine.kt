@@ -151,6 +151,7 @@ class TorrentEngine(private val workDir: File) {
         }
         val until = System.currentTimeMillis() + timeoutSec * 1000L
         var winner: Slot? = null
+        var nextLog = System.currentTimeMillis() + 8000
         try {
             while (winner == null) {
                 if (closed) throw IOException("closed")
@@ -169,6 +170,14 @@ class TorrentEngine(private val workDir: File) {
                     }
                 }
                 if (winner == null) Thread.sleep(80)
+                if (System.currentTimeMillis() > nextLog) {
+                    nextLog += 8000
+                    println("5broz-engine race: " + slots.joinToString(" | ") { sl ->
+                        val th = sl.th
+                        if (th == null) "${sl.infoHash.take(8)} no-handle"
+                        else runCatching { val st = th.status(); "${sl.infoHash.take(8)} meta=${st.hasMetadata()} peers=${st.numPeers()} ready=${sl.ready} rate=${st.downloadPayloadRate()}" }.getOrDefault("${sl.infoHash.take(8)} ?")
+                    })
+                }
             }
         } finally {
             for (sl in slots) if (sl !== winner) sl.th?.let { runCatching { s.remove(it, SessionHandle.DELETE_FILES) } }
