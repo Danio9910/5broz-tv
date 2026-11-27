@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -46,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -100,14 +102,14 @@ fun Focusable(
     Box(
         modifier
             .scale(s)
-            .then(if (showRing) Modifier.shadow(18.dp, shape, ambientColor = C.Gold, spotColor = C.Gold) else Modifier)
+            .then(if (showRing) Modifier.shadow(22.dp, shape, ambientColor = Color.White.copy(alpha = 0.5f), spotColor = Color.White.copy(alpha = 0.5f)) else Modifier)
             .then(fr)
             .onFocusChanged {
                 focused = it.isFocused
                 if (it.isFocused) onFocus?.invoke()
             }
             .clip(shape)
-            .border(if (showRing) 2.dp else 0.dp, if (showRing) C.Gold else Color.Transparent, shape)
+            .border(if (showRing) 2.dp else 0.dp, if (showRing) C.Paper else Color.Transparent, shape)
             .clickable(source, indication = null) {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
@@ -123,14 +125,15 @@ fun GoldButton(
     focusRequester: FocusRequester? = null,
     filled: Boolean = true,
     fill: Boolean = false, // stretch to the width the caller gave
-    icon: String? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
-    Focusable(onClick, modifier, RoundedCornerShape(50), lift = 1.05f, focusRequester = focusRequester) { f ->
+    // Primary actions are solid white (the way premium players do it); gold is
+    // kept for accents only. Secondary actions are frosted glass.
+    Focusable(onClick, modifier, RoundedCornerShape(10.dp), lift = 1.05f, focusRequester = focusRequester, ring = false) { f ->
         val bg = when {
-            filled && f -> C.Paper
-            filled -> C.Gold
+            filled -> if (f || !LocalIsTv.current) C.Paper else C.Paper.copy(alpha = 0.88f)
             f -> C.Paper
-            else -> C.Paper.copy(alpha = 0.12f)
+            else -> Color.White.copy(alpha = 0.14f)
         }
         val fg = if (filled || f) C.Ink950 else C.Paper
         Row(
@@ -139,7 +142,7 @@ fun GoldButton(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (icon != null) {
-                Text(icon, color = fg, fontSize = 14.sp)
+                Ic(icon, 18.dp, fg)
                 Spacer(Modifier.width(8.dp))
             }
             Text(text, style = MaterialTheme.typography.labelLarge, color = fg)
@@ -199,7 +202,7 @@ fun Poster(
     ) {
         Box(Modifier.fillMaxSize().background(C.Ink800)) {
             if (item.poster != null) {
-                Img(item.poster, Modifier.fillMaxSize(), item.name)
+                Img(item.poster.replace("/w500/", "/w342/"), Modifier.fillMaxSize(), item.name)
             } else {
                 Text(
                     item.name,
@@ -275,7 +278,7 @@ fun RankedPoster(rank: Int, item: Preview, width: Dp, onClick: () -> Unit, onFoc
                 fontWeight = FontWeight.Bold,
                 fontSize = (width.value * 0.8f).sp,
                 color = C.Ink950,
-                shadow = androidx.compose.ui.graphics.Shadow(C.Gold.copy(alpha = 0.9f), blurRadius = 3f),
+                shadow = androidx.compose.ui.graphics.Shadow(C.Paper.copy(alpha = 0.75f), blurRadius = 2.5f),
             ),
         )
         Box(Modifier.align(Alignment.BottomEnd)) { Poster(item, width, onClick, onFocus = onFocus) }
@@ -395,4 +398,74 @@ val MinimalScroll = object : androidx.compose.foundation.gestures.BringIntoViewS
             else -> end - containerSize
         }
     }
+}
+
+
+/** The film's own title artwork when it exists — text otherwise. */
+@Composable
+fun TitleArt(
+    name: String,
+    logo: String?,
+    maxHeight: Dp,
+    maxWidth: Dp,
+    style: androidx.compose.ui.text.TextStyle,
+    center: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    if (logo != null) {
+        AsyncImage(
+            model = logo,
+            contentDescription = name,
+            contentScale = ContentScale.Fit,
+            alignment = if (center) Alignment.Center else Alignment.CenterStart,
+            modifier = modifier.height(maxHeight).androidxWidthIn(maxWidth),
+        )
+    } else {
+        Text(
+            name,
+            modifier = modifier,
+            style = style,
+            textAlign = if (center) TextAlign.Center else TextAlign.Start,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private fun Modifier.androidxWidthIn(max: Dp) = this.then(Modifier.widthIn(max = max).fillMaxWidth())
+
+/** Very slow push-in on artwork — the "cinematic" breathing of premium apps. */
+@Composable
+fun Modifier.kenBurns(): Modifier {
+    val t = rememberInfiniteTransition(label = "kb")
+    val s by t.animateFloat(1f, 1.08f, infiniteRepeatable(tween(22000), RepeatMode.Reverse), label = "s")
+    return this.graphicsLayer {
+        scaleX = s
+        scaleY = s
+    }
+}
+
+/** A deep tint taken from the artwork, used to colour the page around it. */
+@Composable
+fun rememberAmbient(url: String?): Color {
+    val ctx = LocalContext.current
+    var c by remember(url) { mutableStateOf(C.Ink950) }
+    androidx.compose.runtime.LaunchedEffect(url) {
+        if (url == null) return@LaunchedEffect
+        val req = ImageRequest.Builder(ctx).data(url.replace("/w1280/", "/w300/").replace("/w780/", "/w300/"))
+            .allowHardware(false).size(200).build()
+        val r = coil.Coil.imageLoader(ctx).execute(req)
+        val bmp = (r.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap ?: return@LaunchedEffect
+        val p = androidx.palette.graphics.Palette.from(bmp).generate()
+        val sw = p.darkMutedSwatch ?: p.mutedSwatch ?: p.darkVibrantSwatch ?: return@LaunchedEffect
+        // Keep it dark and quiet: mix the colour heavily with ink.
+        val base = Color(sw.rgb)
+        c = Color(
+            red = base.red * 0.35f + C.Ink950.red * 0.65f,
+            green = base.green * 0.35f + C.Ink950.green * 0.65f,
+            blue = base.blue * 0.35f + C.Ink950.blue * 0.65f,
+        )
+    }
+    val animated by androidx.compose.animation.animateColorAsState(c, tween(700), label = "amb")
+    return animated
 }

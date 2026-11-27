@@ -302,6 +302,29 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         poke()
     }
 
+    override fun audioOptions(): List<SubOption> {
+        val p = player ?: return emptyList()
+        val groups = p.currentTracks.groups.filter { it.type == MC.TRACK_TYPE_AUDIO }
+        if (groups.size < 2) return emptyList()
+        val ar = java.util.Locale("ar")
+        return groups.mapIndexed { i, g ->
+            val f = g.getTrackFormat(0)
+            val lang = f.language?.takeIf { it != "und" }?.let { java.util.Locale(it).getDisplayLanguage(ar) }
+            val ch = when (f.channelCount) {
+                6 -> " · 5.1"
+                8 -> " · 7.1"
+                2 -> " · ستيريو"
+                else -> ""
+            }
+            val label = listOfNotNull(f.label, lang).distinct().joinToString(" — ").ifBlank { "مسار ${i + 1}" } + ch
+            SubOption(label, g.isSelected) {
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                    .setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, 0))
+                    .build()
+            }
+        }
+    }
+
     override fun setSubtitleSize(scale: Float) {
         com.fivebroz.android.data.Prefs.subScale = scale
         subScale = scale
@@ -646,11 +669,12 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     // ---------- remote / keys ----------
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (overlay is Overlay.Next || overlay is Overlay.Failed || ui.subsOpen || ui.chatOpen) {
-            if ((ui.subsOpen || ui.chatOpen) && event.keyCode == KeyEvent.KEYCODE_BACK) {
+        if (overlay is Overlay.Next || overlay is Overlay.Failed || ui.subsOpen || ui.chatOpen || ui.audioOpen) {
+            if ((ui.subsOpen || ui.chatOpen || ui.audioOpen) && event.keyCode == KeyEvent.KEYCODE_BACK) {
                 if (event.action == KeyEvent.ACTION_UP) {
                     ui.subsOpen = false
                     ui.chatOpen = false
+                    ui.audioOpen = false
                 }
                 return true
             }
@@ -733,7 +757,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                             Modifier.align(Alignment.Center),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            CircularProgressIndicator(color = C.Gold, strokeWidth = 2.dp)
+                            CircularProgressIndicator(color = C.Paper, strokeWidth = 2.dp)
                             VSpace(16.dp)
                             Text(o.text, color = C.Muted, style = MaterialTheme.typography.bodyLarge)
                         }

@@ -12,6 +12,7 @@ data class Preview(
     val description: String? = null,
     val year: String? = null,
     val rating: String? = null,
+    val logo: String? = null, // the title's own artwork (wordmark)
 )
 
 data class Episode(
@@ -72,6 +73,7 @@ private fun parsePreview(o: JSONObject): Preview? {
         description = o.str("description"),
         year = o.str("releaseInfo"),
         rating = o.str("imdbRating"),
+        logo = o.str("logo"),
     )
 }
 
@@ -129,8 +131,37 @@ object Api {
         )
     }
 
+    private fun kidsParam() = if (Prefs.profileKids) "&kids=1" else ""
+
     suspend fun search(q: String): List<Preview> =
-        Net.getObj("$B/api/search?q=${enc(q)}").optJSONArray("results").mapObjects(::parsePreview)
+        Net.getObj("$B/api/search?q=${enc(q)}${kidsParam()}").optJSONArray("results").mapObjects(::parsePreview)
+
+    suspend fun trending(): List<Preview> = try {
+        Net.getObj("$B/api/search?trending=1${kidsParam()}").optJSONArray("results").mapObjects(::parsePreview)
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    suspend fun genre(id: String, type: String): List<Preview> = try {
+        Net.getObj("$B/api/search?genre=${enc(id)}&type=${enc(type)}${kidsParam()}").optJSONArray("results").mapObjects(::parsePreview)
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    suspend fun logo(type: String, id: String): String? = try {
+        Net.getObj("$B/api/logo?type=${enc(type)}&id=${enc(id)}").str("logo")
+    } catch (_: Exception) {
+        null
+    }
+
+    data class Person(val name: String, val photo: String?, val bio: String?, val born: String?, val works: List<Preview>)
+
+    suspend fun person(id: String): Person? = try {
+        val o = Net.getObj("$B/api/person?id=${enc(id)}")
+        Person(o.optString("name"), o.str("photo"), o.str("bio"), o.str("born"), o.optJSONArray("works").mapObjects(::parsePreview))
+    } catch (_: Exception) {
+        null
+    }
 
     suspend fun streams(type: String, videoId: String): List<Stream> {
         val body = JSONObject().put("type", type).put("id", videoId)

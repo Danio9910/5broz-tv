@@ -72,6 +72,7 @@ class PlayerUi {
     var buffered by mutableLongStateOf(0L)
     var flash by mutableStateOf<String?>(null)
     var subsOpen by mutableStateOf(false)
+    var audioOpen by mutableStateOf(false)
     var chatOpen by mutableStateOf(false)
     var partyCode by mutableStateOf("")
     var bubble by mutableStateOf<String?>(null)
@@ -88,6 +89,7 @@ interface PlayerActions {
     fun back()
     fun poke()
     fun subtitleOptions(): List<SubOption>
+    fun audioOptions(): List<SubOption>
     fun setSubtitleSize(scale: Float)
     val subtitleOffset: Float
     fun shiftSubtitles(deltaSec: Float)
@@ -134,7 +136,7 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
     ) {
         // Buffering spinner even while controls are hidden.
         if (ui.buffering && !ui.visible) {
-            CircularProgressIndicator(Modifier.align(Alignment.Center).size(46.dp), color = C.Gold, strokeWidth = 2.dp)
+            CircularProgressIndicator(Modifier.align(Alignment.Center).size(46.dp), color = C.Paper, strokeWidth = 2.dp)
         }
         ui.flash?.let { f ->
             Text(
@@ -164,7 +166,7 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
                 ) {
                     Focusable(a::back, shape = CircleShape, lift = 1.08f, ring = false) { f ->
                         Box(Modifier.size(40.dp).background(if (f) C.Paper else Color.Transparent), contentAlignment = Alignment.Center) {
-                            Text("→", fontSize = 22.sp, color = if (f) C.Ink950 else C.Paper)
+                            com.fivebroz.android.ui.Ic(com.fivebroz.android.ui.Icons.Back, 22.dp, if (f) C.Ink950 else C.Paper)
                         }
                     }
                     Spacer(Modifier.width(12.dp))
@@ -180,15 +182,15 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
                         horizontalArrangement = Arrangement.spacedBy(if (isTv) 48.dp else 56.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        RoundButton("−10", 54.dp) { a.seekBy(-10) }
+                        RoundButton(com.fivebroz.android.ui.Icons.Rewind, "10", 56.dp) { a.seekBy(-10) }
                         if (ui.buffering) {
                             Box(Modifier.size(76.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(Modifier.size(52.dp), color = C.Gold, strokeWidth = 2.dp)
+                                CircularProgressIndicator(Modifier.size(52.dp), color = C.Paper, strokeWidth = 2.dp)
                             }
                         } else {
-                            RoundButton(if (ui.playing) "❚❚" else "▶", 76.dp, big = true, fr = playFr) { a.togglePlay() }
+                            RoundButton(if (ui.playing) com.fivebroz.android.ui.Icons.Pause else com.fivebroz.android.ui.Icons.Play, null, 78.dp, big = true, fr = playFr) { a.togglePlay() }
                         }
-                        RoundButton("+10", 54.dp) { a.seekBy(10) }
+                        RoundButton(com.fivebroz.android.ui.Icons.Forward, "10", 56.dp) { a.seekBy(10) }
                     }
 
                     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 28.dp, vertical = 18.dp)) {
@@ -196,10 +198,12 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
                         VSpace(14.dp)
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Pill("الترجمة") { ui.subsOpen = true }
-                                Pill("مصدر آخر") { a.otherSource() }
-                                if (a.hasNextEpisode && (!a.inParty || a.partyIsHost)) Pill("الحلقة التالية") { a.nextEpisode() }
-                                Pill(if (a.inParty) "الغرفة ${ui.partyCode}" else "غرفة مشاهدة") { a.startParty() }
+                                val I = com.fivebroz.android.ui.Icons
+                                Pill("الترجمة", I.Subtitles) { ui.subsOpen = true }
+                                Pill("الصوت", I.Audio) { ui.audioOpen = true }
+                                Pill("مصدر آخر", I.Sources) { a.otherSource() }
+                                if (a.hasNextEpisode && (!a.inParty || a.partyIsHost)) Pill("الحلقة التالية", I.Next) { a.nextEpisode() }
+                                Pill(if (a.inParty) "الغرفة ${ui.partyCode}" else "غرفة مشاهدة", I.Party) { a.startParty() }
                             }
                         }
                     }
@@ -220,38 +224,52 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
             }
         }
         if (ui.subsOpen) SubtitlePanel(ui, a)
+        if (ui.audioOpen) AudioPanel(ui, a)
         if (ui.chatOpen) ChatPanel(ui, a)
     }
 }
 
 @Composable
-private fun RoundButton(label: String, size: androidx.compose.ui.unit.Dp, big: Boolean = false, fr: FocusRequester? = null, onClick: () -> Unit) {
+private fun RoundButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    badge: String?,
+    size: androidx.compose.ui.unit.Dp,
+    big: Boolean = false,
+    fr: FocusRequester? = null,
+    onClick: () -> Unit,
+) {
     Focusable(onClick, shape = CircleShape, lift = 1.1f, focusRequester = fr, ring = false) { f ->
+        val tint = if (f) C.Ink950 else C.Paper
         Box(
-            Modifier.size(size)
-                .background(if (f) C.Paper else if (big) Color.White.copy(alpha = 0.14f) else Color.Transparent)
-                .border(if (big || f) 0.dp else 1.5.dp, C.Paper.copy(alpha = 0.7f), CircleShape),
+            Modifier.size(size).background(if (f) C.Paper else if (big) Color.White.copy(alpha = 0.14f) else Color.Transparent),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                label,
-                fontSize = if (big) 26.sp else 15.sp,
-                color = if (f) C.Ink950 else C.Paper,
-                style = androidx.compose.ui.text.TextStyle(textDirection = androidx.compose.ui.text.style.TextDirection.Ltr),
-            )
+            com.fivebroz.android.ui.Ic(icon, if (big) 34.dp else 36.dp, tint)
+            if (badge != null) {
+                Text(
+                    badge,
+                    fontSize = 10.sp,
+                    color = tint,
+                    style = androidx.compose.ui.text.TextStyle(textDirection = androidx.compose.ui.text.style.TextDirection.Ltr),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun Pill(label: String, onClick: () -> Unit) {
+private fun Pill(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, onClick: () -> Unit) {
     Focusable(onClick, shape = RoundedCornerShape(50), lift = 1.05f, ring = false) { f ->
-        Text(
-            label,
-            Modifier.background(if (f) C.Paper else Color.White.copy(alpha = 0.12f)).padding(horizontal = 16.dp, vertical = 7.dp),
-            color = if (f) C.Ink950 else C.Paper,
-            style = MaterialTheme.typography.labelLarge,
-        )
+        val fg = if (f) C.Ink950 else C.Paper
+        Row(
+            Modifier.background(if (f) C.Paper else Color.White.copy(alpha = 0.12f)).padding(horizontal = 14.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            if (icon != null) com.fivebroz.android.ui.Ic(icon, 17.dp, fg)
+            Text(label, color = fg, style = MaterialTheme.typography.labelLarge)
+        }
     }
 }
 
@@ -338,25 +356,20 @@ private fun SubtitlePanel(ui: PlayerUi, a: PlayerActions) {
                     focusRequester = if (i == 0) first else null,
                     ring = false,
                 ) { f ->
-                    Text(
-                        (if (o.selected) "✓  " else "    ") + o.label,
-                        Modifier.fillMaxWidth().background(if (f) C.Paper else C.Ink800).padding(horizontal = 14.dp, vertical = 11.dp),
-                        color = if (f) C.Ink950 else if (o.selected) C.Gold else C.Paper,
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
+                    OptionRow(o, f)
                 }
             }
             VSpace(14.dp)
             Text("توقيت الترجمة", color = C.Muted, style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Pill("أبكر ٠٫٥") { a.shiftSubtitles(-0.5f) }
+                Pill("أبكر 0.5") { a.shiftSubtitles(-0.5f) }
                 Text(
                     (if (a.subtitleOffset > 0) "+" else "") + "%.1f ث".format(a.subtitleOffset),
                     color = C.Paper,
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.widthIn(min = 56.dp),
                 )
-                Pill("أبطأ ٠٫٥") { a.shiftSubtitles(0.5f) }
+                Pill("أبطأ 0.5") { a.shiftSubtitles(0.5f) }
             }
             VSpace(14.dp)
             Text("حجم الخط", color = C.Muted, style = MaterialTheme.typography.labelLarge)
@@ -414,6 +427,52 @@ private fun ChatPanel(ui: PlayerUi, a: PlayerActions) {
                 Modifier.fillMaxWidth(), plainText = true, center = false,
             )
             Pill("إرسال") { a.sendChat(text); text = "" }
+        }
+    }
+}
+
+@Composable
+private fun OptionRow(o: SubOption, f: Boolean) {
+    Row(
+        Modifier.fillMaxWidth().background(if (f) C.Paper else C.Ink800).padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.size(18.dp)) {
+            if (o.selected) com.fivebroz.android.ui.Ic(com.fivebroz.android.ui.Icons.Check, 18.dp, if (f) C.Ink950 else C.Gold)
+        }
+        Text(o.label, color = if (f) C.Ink950 else C.Paper, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/** Choose the soundtrack — dubbed Arabic, original, commentary… */
+@Composable
+private fun AudioPanel(ui: PlayerUi, a: PlayerActions) {
+    val options = remember { a.audioOptions() }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f))
+            .pointerInput(Unit) { detectTapGestures { ui.audioOpen = false } },
+    ) {
+        Column(
+            Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(340.dp).background(C.Ink900)
+                .verticalScroll(rememberScrollState()).padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("الصوت", style = MaterialTheme.typography.titleLarge)
+            VSpace(6.dp)
+            if (options.isEmpty()) Text("هذا الملف فيه مسار صوت واحد.", color = C.Muted, style = MaterialTheme.typography.bodyMedium)
+            options.forEachIndexed { i, o ->
+                Focusable(
+                    { o.select(); ui.audioOpen = false },
+                    Modifier.fillMaxWidth(),
+                    RoundedCornerShape(10.dp),
+                    lift = 1.02f,
+                    focusRequester = if (i == 0) first else null,
+                    ring = false,
+                ) { f -> OptionRow(o, f) }
+            }
         }
     }
 }

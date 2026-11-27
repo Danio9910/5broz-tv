@@ -59,6 +59,9 @@ import com.fivebroz.android.data.ResumeItem
 import kotlinx.coroutines.delay
 import java.util.Calendar
 
+/** Title artwork already looked up this session (null = the title has none). */
+private val logoCache = HashMap<String, String?>()
+
 private fun greeting(): String {
     val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     return when {
@@ -70,9 +73,9 @@ private fun greeting(): String {
 }
 
 private fun top10Title(kids: Boolean, family: Boolean) = when {
-    kids -> "أفضل ١٠ للأطفال"
-    family -> "أفضل ١٠ للعائلة"
-    else -> "أفضل ١٠ اليوم"
+    kids -> "أفضل 10 للأطفال"
+    family -> "أفضل 10 للعائلة"
+    else -> "أفضل 10 اليوم"
 }
 
 @Composable
@@ -144,7 +147,6 @@ private fun PhoneHome(
                 item("sk") { SkeletonRows(g) }
             } else {
                 item("health") { HealthNotice(g) }
-                item("join") { JoinChip(g) }
                 if (resume.isNotEmpty()) item("resume") { ContinueRow(resume, onOpen, g) }
                 if (home.top10.isNotEmpty()) item("top10") {
                     PosterRow(top10Title(kids, family), home.top10, onOpen, g, ranked = true)
@@ -173,21 +175,24 @@ fun HealthNotice(g: Dp) {
         msg = when {
             !h.catalog -> "قائمة الأفلام لا تستجيب الآن — حاول بعد قليل."
             !h.torrents && !h.debridActive -> "مصادر التشغيل لا تستجيب الآن — حاول بعد قليل."
-            !h.debridActive -> "اشتراك Real-Debrid غير مفعّل — التشغيل يعمل عبر التورنت (أبطأ قليلاً عند البدء)."
-            h.daysLeft != null && h.daysLeft <= 5 -> "اشتراك Real-Debrid ينتهي خلال ${h.daysLeft} أيام."
+            h.daysLeft != null && h.daysLeft in 0..5 -> "اشتراك Real-Debrid ينتهي خلال ${h.daysLeft} أيام."
+            !h.debridActive && !Prefs.seenDebridNotice -> {
+                Prefs.seenDebridNotice = true
+                "التشغيل يعمل الآن عبر التورنت — قد يستغرق البدء ثوانٍ أطول."
+            }
             else -> null
         }
     }
     val m = msg ?: return
     Row(
         Modifier.padding(horizontal = g, vertical = 6.dp).fillMaxWidth()
-            .background(C.Gold.copy(alpha = 0.12f), androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .background(C.Paper.copy(alpha = 0.07f), androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(m, color = C.Paper.copy(alpha = 0.9f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Focusable({ healthShown = true; msg = null }, shape = CircleShape, lift = 1f, ring = false) {
-            Text("✕", Modifier.padding(8.dp), color = C.Muted)
+            Ic(Icons.Close, 18.dp, C.Muted, Modifier.padding(8.dp))
         }
     }
 }
@@ -222,7 +227,7 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
         HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
             val it = items[page]
             Box(Modifier.fillMaxSize()) {
-                Img(if (wide) it.background ?: it.poster else it.poster ?: it.background, Modifier.fillMaxSize(), it.name)
+                Img(if (wide) it.background ?: it.poster else it.poster ?: it.background, Modifier.fillMaxSize().kenBurns(), it.name)
                 Box(
                     Modifier.fillMaxSize().background(
                         Brush.verticalGradient(
@@ -238,14 +243,8 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 64.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(
-                        it.name,
-                        style = MaterialTheme.typography.displayLarge,
-                        textAlign = TextAlign.Center,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    VSpace(8.dp)
+                    TitleArt(it.name, it.logo, 96.dp, 300.dp, MaterialTheme.typography.displayLarge, center = true)
+                    VSpace(10.dp)
                     Meta(listOf(if (it.type == "series") "مسلسل" else "فيلم", it.year, it.rating?.let { r -> "★ $r" }))
                 }
             }
@@ -255,7 +254,7 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            GoldButton("شاهد الآن", { onOpen(items[pager.currentPage]) }, icon = "▶")
+            GoldButton("شاهد الآن", { onOpen(items[pager.currentPage]) }, icon = Icons.Play)
             if (items.size > 1) Dots(items.size, pager.currentPage)
         }
     }
@@ -347,7 +346,7 @@ private fun TvHome(
     Box(Modifier.fillMaxSize()) {
         Crossfade(shown, animationSpec = tween(500), label = "bg") { p ->
             Box(Modifier.fillMaxSize()) {
-                if (p != null) Img(p.background ?: p.poster, Modifier.fillMaxSize())
+                if (p != null) Img((p.background ?: p.poster)?.replace("/w780/", "/w1280/"), Modifier.fillMaxSize().kenBurns())
             }
         }
         Box(
@@ -368,7 +367,15 @@ private fun TvHome(
             ) {
                 val p = shown
                 if (p != null) {
-                    Text(p.name, style = MaterialTheme.typography.displayLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    var logo by remember(p.id) { mutableStateOf(p.logo ?: logoCache[p.id]) }
+                    LaunchedEffect(p.id) {
+                        if (logo == null && !logoCache.containsKey(p.id)) {
+                            val l = Api.logo(p.type, p.id)
+                            logoCache[p.id] = l
+                            logo = l
+                        }
+                    }
+                    TitleArt(p.name, logo, 110.dp, 420.dp, MaterialTheme.typography.displayLarge)
                     VSpace(8.dp)
                     Meta(listOf(if (p.type == "series") "مسلسل" else "فيلم", p.year, p.rating?.let { "★ $it" }))
                     if (!p.description.isNullOrBlank()) {

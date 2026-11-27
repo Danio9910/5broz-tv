@@ -63,13 +63,14 @@ fun FiveBrozTheme(content: @Composable () -> Unit) {
             onBackground = C.Paper,
         ),
         typography = Typography(
-            displayLarge = base.copy(fontSize = 40.sp, fontWeight = FontWeight.Bold, lineHeight = 48.sp),
-            headlineMedium = base.copy(fontSize = 26.sp, fontWeight = FontWeight.Bold, lineHeight = 34.sp),
+            // Two weights only (regular + semibold): quieter, more expensive-looking.
+            displayLarge = base.copy(fontSize = 36.sp, fontWeight = FontWeight.SemiBold, lineHeight = 46.sp),
+            headlineMedium = base.copy(fontSize = 24.sp, fontWeight = FontWeight.SemiBold, lineHeight = 34.sp),
             titleLarge = base.copy(fontSize = 20.sp, fontWeight = FontWeight.SemiBold, lineHeight = 28.sp),
             titleMedium = base.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, lineHeight = 24.sp),
             bodyLarge = base.copy(fontSize = 15.sp, lineHeight = 25.sp),
             bodyMedium = base.copy(fontSize = 13.sp, lineHeight = 21.sp),
-            labelLarge = base.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
+            labelLarge = base.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium),
             labelMedium = base.copy(fontSize = 12.sp),
         ),
         content = content,

@@ -195,19 +195,22 @@ fun TonightScreen(onOpen: (Preview) -> Unit) {
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
                         lift = 1.06f,
                     ) { f ->
-                        Text(
-                            "▲ ${s.votes}",
-                            Modifier.background(if (f) C.Paper else if (s.votedByMe) C.Gold else C.Ink700).padding(horizontal = 16.dp, vertical = 9.dp),
-                            color = if (f || s.votedByMe) C.Ink950 else C.Paper,
-                            style = MaterialTheme.typography.labelLarge,
-                        )
+                        val fg = if (f || s.votedByMe) C.Ink950 else C.Paper
+                        androidx.compose.foundation.layout.Row(
+                            Modifier.background(if (f) C.Paper else if (s.votedByMe) C.Gold else C.Ink700).padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Ic(Icons.Vote, 16.dp, fg)
+                            Text("${s.votes}", color = fg, style = MaterialTheme.typography.labelLarge)
+                        }
                     }
                     if (s.addedBy != null && s.addedBy == Prefs.profileName) {
                         Focusable({
                             list = l.filter { it.id != s.id }
                             scope.launch { Db.removeSuggestion(s.id) }
                         }, shape = androidx.compose.foundation.shape.CircleShape, lift = 1.06f, ring = false) {
-                            Text("✕", Modifier.padding(10.dp), color = C.Muted)
+                            Ic(Icons.Close, 18.dp, C.Muted, Modifier.padding(10.dp))
                         }
                     }
                 }

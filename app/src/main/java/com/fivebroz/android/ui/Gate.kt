@@ -71,7 +71,7 @@ fun Field(
                 keyboard?.show()
             }
             .background(C.Ink800, RoundedCornerShape(12.dp))
-            .border(1.dp, if (focused) C.Gold else C.Paper.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+            .border(1.dp, if (focused) C.Paper.copy(alpha = 0.7f) else C.Paper.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
             .padding(horizontal = 16.dp, vertical = 13.dp),
         contentAlignment = if (center) Alignment.Center else Alignment.CenterStart,
     ) {

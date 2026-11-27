@@ -31,6 +31,13 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.rgb(10, 10, 11)),
         )
         Prefs.init(applicationContext)
+        // Phones browse upright like other streaming apps (the player rotates on its own).
+        if (packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) &&
+            !packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) &&
+            resources.configuration.smallestScreenWidthDp < 600
+        ) {
+            requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
         val isTv = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
             !packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
 

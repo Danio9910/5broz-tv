@@ -60,6 +60,10 @@ object Prefs {
             .remove("pavatar").remove("psymbol").apply()
     }
 
+    var seenDebridNotice: Boolean
+        get() = sp.getBoolean("seenDebrid", false)
+        set(v) = sp.edit().putBoolean("seenDebrid", v).apply()
+
     // Per-profile player preferences.
     private fun k(name: String) = "${profileId ?: "x"}.$name"
     var subLang: String // "ar", "en" or "off"

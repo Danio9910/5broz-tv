@@ -126,6 +126,10 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
     val isTv = LocalIsTv.current
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var askExitCode by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    var join by remember { mutableStateOf(false) }
+    // Back from another tab returns home first, like every streaming app.
+    androidx.activity.compose.BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
 
     val switchProfile = {
         // Leaving a kids profile needs the household code (parental lock).
@@ -134,7 +138,7 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
 
     val pages: @Composable (Tab) -> Unit = { t ->
         when (t) {
-            Tab.Home -> HomeScreen(onOpen, switchProfile)
+            Tab.Home -> HomeScreen(onOpen) { menu = true }
             Tab.Search -> SearchScreen(onOpen)
             Tab.Library -> LibraryScreen(onOpen)
             Tab.Tonight -> TonightScreen(onOpen)
@@ -157,6 +161,14 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
         }
     }
 
+    if (menu) {
+        ProfileMenu(
+            onDismiss = { menu = false },
+            onSwitch = { menu = false; switchProfile() },
+            onJoin = { menu = false; join = true },
+        )
+    }
+    if (join) JoinPartyDialog { join = false }
     if (askExitCode) {
         CodeDialog(
             title = "الخروج من وضع الأطفال",
@@ -213,7 +225,7 @@ private fun TvRail(tab: Tab, onTab: (Tab) -> Unit, onProfile: () -> Unit) {
         Spacer(Modifier.weight(1f))
         var join by remember { mutableStateOf(false) }
         RailItem("انضمام لغرفة", false, open, { join = true }) {
-            Text("⧉", fontSize = 20.sp, color = it)
+            Icon(Icons.Join, null, Modifier.size(22.dp), tint = it)
         }
         if (join) JoinPartyDialog { join = false }
         RailItem(Prefs.profileName, false, open, onProfile) {
@@ -290,6 +302,40 @@ private fun PhoneBottomBar(tab: Tab, onTab: (Tab) -> Unit) {
                     Text(t.label, fontSize = 10.5.sp, color = if (on) C.Paper else C.Muted, fontFamily = Cairo, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal)
                 }
             }
+        }
+    }
+}
+
+/** Phone: tapping your avatar opens a small sheet instead of leaving straight away. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () -> Unit) {
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Ink900) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Avatar(Prefs.current(), 52.dp)
+                Column {
+                    Text(Prefs.profileName, style = MaterialTheme.typography.titleLarge)
+                    Text("الإصدار ${com.fivebroz.android.BuildConfig.VERSION_NAME}", color = C.Muted, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            Spacer(Modifier.height(18.dp))
+            MenuRow(Icons.Join, "انضمام لغرفة مشاهدة", onJoin)
+            MenuRow(Icons.Party, "تبديل الملف", onSwitch)
+        }
+    }
+}
+
+@Composable
+private fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Focusable(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(12.dp), lift = 1f, ring = false) { f ->
+        Row(
+            Modifier.fillMaxWidth().background(if (f) C.Ink700 else Color.Transparent).padding(horizontal = 6.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Ic(icon, 22.dp)
+            Text(label, style = MaterialTheme.typography.bodyLarge)
         }
     }
 }

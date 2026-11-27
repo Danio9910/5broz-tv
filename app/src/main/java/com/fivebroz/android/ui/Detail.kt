@@ -70,6 +70,12 @@ import kotlinx.coroutines.launch
 
 private fun epLabel(e: Episode) = "م${e.season} · ح${e.episode}" + if (e.title.isNotBlank()) " — ${e.title}" else ""
 
+private fun unavailableText(m: DetailModel): String = when {
+    m.d.base.id.startsWith("tt") && com.fivebroz.android.data.Prefs.profileKids -> "هذا العنوان غير متاح في ملف الأطفال."
+    m.d.base.id.startsWith("tt") && com.fivebroz.android.data.Prefs.profileFamily -> "هذا العنوان غير متاح في الملف العائلي."
+    else -> "لا توجد مصادر لهذا العنوان حالياً — غالباً لم يُعرض بعد."
+}
+
 /** Personal touches on a title: thumbs rating and "suggest for tonight". */
 private class Extras(
     val rating: Int,
@@ -140,7 +146,14 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
 
     val isSeries = d.base.type == "series"
     val episodes = d.episodes.filter { it.season > 0 }
-    val canPlay = d.base.id.startsWith("tt")
+    // Age gate: kids see only kids-rated titles, family profiles skip adult ratings.
+    val cert = (d.certification ?: "").uppercase()
+    val kidsGenres = d.genres.any { it.contains("رسوم") || it.contains("عائل") || it.contains("أطفال") || it.contains("Animation") || it.contains("Family") || it.contains("Kids") }
+    val kidsOk = cert in setOf("G", "PG", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "TV-PG", "0", "6", "7") || (cert.isEmpty() && kidsGenres)
+    val adult = cert in setOf("R", "NC-17", "TV-MA", "18", "18+", "R18", "X")
+    val blockedByProfile = (com.fivebroz.android.data.Prefs.profileKids && !kidsOk) ||
+        (com.fivebroz.android.data.Prefs.profileFamily && adult)
+    val canPlay = d.base.id.startsWith("tt") && !blockedByProfile
 
     // Which episode the main button plays: the one in progress, else the first unwatched.
     val target: Episode? = if (!isSeries) null else
@@ -278,21 +291,22 @@ private fun PhoneDetail(
     val tablet = LocalIsTablet.current
     val headH = (LocalConfiguration.current.screenWidthDp * if (tablet) 0.46f else 0.66f).dp
 
-    Box(Modifier.fillMaxSize()) {
+    val ambient = rememberAmbient(d.base.background ?: d.base.poster)
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to ambient, 0.75f to C.Ink950))) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp)) {
             item("head") {
                 Box(Modifier.fillMaxWidth().height(headH)) {
-                    Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize())
+                    Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().kenBurns())
                     Box(
                         Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(0f to C.Ink950.copy(alpha = 0.45f), 0.3f to Color.Transparent, 1f to C.Ink950),
+                            Brush.verticalGradient(0f to C.Ink950.copy(alpha = 0.45f), 0.3f to Color.Transparent, 1f to ambient),
                         ),
                     )
                 }
             }
             item("info") {
                 Column(Modifier.padding(horizontal = g).widthIn(max = 760.dp)) {
-                    Text(d.base.name, style = MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp, lineHeight = 36.sp))
+                    TitleArt(d.base.name, d.base.logo, 84.dp, 280.dp, MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp, lineHeight = 36.sp))
                     VSpace(8.dp)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         d.base.rating?.let { Text("★ $it", color = C.Gold, style = MaterialTheme.typography.labelLarge) }
@@ -301,13 +315,13 @@ private fun PhoneDetail(
                     }
                     VSpace(18.dp)
                     if (m.mainText != null && m.mainVideo != null) {
-                        GoldButton(m.mainText, { play(m.mainVideo, m.mainLabel, null) }, Modifier.fillMaxWidth(), fill = true, icon = "▶")
+                        GoldButton(m.mainText, { play(m.mainVideo, m.mainLabel, null) }, Modifier.fillMaxWidth(), fill = true, icon = Icons.Play)
                         if (resumeVideo == m.mainVideo && resumeProgress > 0f) {
                             VSpace(8.dp)
                             ProgressLine(resumeProgress)
                         }
                     } else if (available == false || !m.canPlay) {
-                        Text("لا توجد مصادر لهذا العنوان حالياً — غالباً لم يُعرض بعد.", color = C.Muted, style = MaterialTheme.typography.bodyMedium)
+                        Text(unavailableText(m), color = C.Muted, style = MaterialTheme.typography.bodyMedium)
                     }
                     if (!d.base.description.isNullOrBlank()) {
                         VSpace(16.dp)
@@ -332,11 +346,11 @@ private fun PhoneDetail(
                     VSpace(18.dp)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         val w = Modifier.weight(1f)
-                        ActionIcon(if (saved) "✓" else "+", if (saved) "في قائمتي" else "قائمتي", toggleSaved, modifier = w)
-                        ActionIcon(if (x.suggested) "✓" else "☾", if (x.suggested) "مقترح" else "لليلة", x.onSuggest, modifier = w)
-                        ActionIcon("👍", "أعجبني", { x.onRate(1) }, dim = x.rating == -1, modifier = w)
-                        ActionIcon("👎", "ليس لي", { x.onRate(-1) }, dim = x.rating == 1, modifier = w)
-                        if (m.mainVideo != null && m.canPlay && available != false) ActionIcon("⇅", "المصادر", openSources, modifier = w)
+                        ActionIcon(if (saved) Icons.Check else Icons.Plus, "قائمتي", toggleSaved, on = saved, modifier = w)
+                        ActionIcon(if (x.suggested) Icons.Check else Icons.Tonight, "لليلة", x.onSuggest, on = x.suggested, modifier = w)
+                        ActionIcon(Icons.ThumbUp, "أعجبني", { x.onRate(1) }, on = x.rating == 1, modifier = w)
+                        ActionIcon(Icons.ThumbDown, "ليس لي", { x.onRate(-1) }, on = x.rating == -1, modifier = w)
+                        if (m.mainVideo != null && m.canPlay && available != false) ActionIcon(Icons.Sources, "المصادر", openSources, modifier = w)
                     }
                     VSpace(10.dp)
                 }
@@ -347,11 +361,14 @@ private fun PhoneDetail(
                     Row(Modifier.padding(horizontal = g, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (m.seasons.size > 1) {
                             Focusable({ pickSeason = true }, shape = RoundedCornerShape(8.dp), lift = 1f, ring = false) {
-                                Text(
-                                    "الموسم $season  ▾",
+                                Row(
                                     Modifier.background(C.Ink800).padding(horizontal = 14.dp, vertical = 8.dp),
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text("الموسم $season", style = MaterialTheme.typography.labelLarge)
+                                    Ic(Icons.ChevronDown, 16.dp)
+                                }
                             }
                         } else {
                             SectionTitle("الحلقات")
@@ -364,7 +381,7 @@ private fun PhoneDetail(
                 VSpace(14.dp)
                 PosterRow(d.collectionName ?: "السلسلة", d.collection, onOpen, g)
             }
-            if (d.related.isNotEmpty()) item("related") {
+            if (d.related.isNotEmpty() && !com.fivebroz.android.data.Prefs.profileKids) item("related") {
                 VSpace(14.dp)
                 PosterRow("قد يعجبك أيضاً", d.related, onOpen, g)
             }
@@ -372,7 +389,7 @@ private fun PhoneDetail(
 
         Focusable(onBack, Modifier.statusBarsPadding().padding(12.dp), shape = CircleShape, lift = 1f, ring = false) {
             Box(Modifier.size(38.dp).background(C.Ink950.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
-                Text("→", style = MaterialTheme.typography.titleLarge, color = C.Paper)
+                Ic(Icons.Back, 20.dp)
             }
         }
     }
@@ -410,10 +427,10 @@ private fun CertBadge(text: String) {
 }
 
 @Composable
-private fun ActionIcon(glyph: String, label: String, onClick: () -> Unit, dim: Boolean = false, modifier: Modifier = Modifier) {
+private fun ActionIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit, on: Boolean = false, modifier: Modifier = Modifier) {
     Focusable(onClick, modifier, shape = RoundedCornerShape(10.dp), lift = 1f, ring = false) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(glyph, fontSize = 22.sp, color = C.Paper.copy(alpha = if (dim) 0.35f else 1f))
+        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Ic(icon, 24.dp, if (on) C.Gold else C.Paper)
             Text(label, style = MaterialTheme.typography.labelMedium, color = C.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -437,14 +454,14 @@ private fun LazyListScope.episodeItems(
                             Modifier.align(Alignment.Center).size(30.dp).background(C.Ink950.copy(alpha = 0.55f), CircleShape)
                                 .border(1.dp, C.Paper.copy(alpha = 0.8f), CircleShape),
                             contentAlignment = Alignment.Center,
-                        ) { Text("▶", fontSize = 11.sp, color = C.Paper) }
+                        ) { Ic(Icons.Play, 13.dp) }
                         if (e.id in finished) ProgressLine(1f, Modifier.align(Alignment.BottomCenter))
                         else if (e.id == resumeVideo) ProgressLine(0.5f, Modifier.align(Alignment.BottomCenter))
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text("${e.episode}. ${e.title}", style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (e.id in finished) Text("شوهدت", color = C.Gold, style = MaterialTheme.typography.labelMedium)
+                        if (e.id in finished) Text("شوهدت", color = C.Muted, style = MaterialTheme.typography.labelMedium)
                         else e.released?.let { Text(it, color = C.Muted, style = MaterialTheme.typography.labelMedium) }
                     }
                 }
@@ -482,8 +499,9 @@ private fun TvDetail(
     val playFr = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { playFr.requestFocus() } }
 
-    Box(Modifier.fillMaxSize()) {
-        Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize())
+    val ambient = rememberAmbient(d.base.background ?: d.base.poster)
+    Box(Modifier.fillMaxSize().background(ambient)) {
+        Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().kenBurns())
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to C.Ink950.copy(alpha = 0.2f), 0.5f to C.Ink950.copy(alpha = 0.7f), 1f to C.Ink950)))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to C.Ink950)))
 
@@ -491,7 +509,7 @@ private fun TvDetail(
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 60.dp)) {
             item("head") {
                 Column(Modifier.fillMaxWidth(0.55f).padding(start = g, top = 70.dp, bottom = 26.dp)) {
-                    Text(d.base.name, style = MaterialTheme.typography.displayLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    TitleArt(d.base.name, d.base.logo, 120.dp, 420.dp, MaterialTheme.typography.displayLarge)
                     VSpace(10.dp)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         d.base.rating?.let { Text("★ $it", color = C.Gold, style = MaterialTheme.typography.labelLarge) }
@@ -509,21 +527,21 @@ private fun TvDetail(
                     VSpace(22.dp)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (m.mainText != null && m.mainVideo != null) {
-                            GoldButton(m.mainText, { play(m.mainVideo, m.mainLabel, null) }, focusRequester = playFr, icon = "▶")
+                            GoldButton(m.mainText, { play(m.mainVideo, m.mainLabel, null) }, focusRequester = playFr, icon = Icons.Play)
                         }
                         GoldButton(
                             if (saved) "في قائمتي" else "قائمتي", toggleSaved, filled = false,
-                            icon = if (saved) "✓" else "+",
+                            icon = if (saved) Icons.Check else Icons.Plus,
                             focusRequester = if (m.mainText == null) playFr else null,
                         )
-                        if (m.mainVideo != null && m.canPlay && available != false) GoldButton("المصادر", openSources, filled = false)
-                        GoldButton(if (x.suggested) "مقترح لليلة" else "اقترح لليلة", x.onSuggest, filled = false, icon = if (x.suggested) "✓" else "☾")
-                        GoldButton(if (x.rating == 1) "أعجبني ✓" else "أعجبني", { x.onRate(1) }, filled = false, icon = "👍")
-                        GoldButton(if (x.rating == -1) "ليس لي ✓" else "ليس لي", { x.onRate(-1) }, filled = false, icon = "👎")
+                        if (m.mainVideo != null && m.canPlay && available != false) GoldButton("المصادر", openSources, filled = false, icon = Icons.Sources)
+                        GoldButton(if (x.suggested) "مقترح لليلة" else "اقترح لليلة", x.onSuggest, filled = false, icon = if (x.suggested) Icons.Check else Icons.Tonight)
+                        GoldButton("أعجبني", { x.onRate(1) }, filled = false, icon = if (x.rating == 1) Icons.Check else Icons.ThumbUp)
+                        GoldButton("ليس لي", { x.onRate(-1) }, filled = false, icon = if (x.rating == -1) Icons.Check else Icons.ThumbDown)
                     }
                     if (available == false || !m.canPlay) {
                         VSpace(12.dp)
-                        Text("لا توجد مصادر لهذا العنوان حالياً — غالباً لم يُعرض بعد.", color = C.Muted, style = MaterialTheme.typography.bodyMedium)
+                        Text(unavailableText(m), color = C.Muted, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -552,7 +570,7 @@ private fun TvDetail(
                 }
             }
             if (d.collection.size > 1) item("collection") { PosterRow(d.collectionName ?: "السلسلة", d.collection, onOpen, g) }
-            if (d.related.isNotEmpty()) item("related") { PosterRow("قد يعجبك أيضاً", d.related, onOpen, g) }
+            if (d.related.isNotEmpty() && !com.fivebroz.android.data.Prefs.profileKids) item("related") { PosterRow("قد يعجبك أيضاً", d.related, onOpen, g) }
         }
         }
     }
@@ -569,7 +587,7 @@ private fun TvEpisodeCard(e: Episode, watched: Boolean, current: Boolean, onClic
             }
         }
         VSpace(8.dp)
-        Text("الحلقة ${e.episode}" + if (watched) "  ·  شوهدت" else "", color = C.Gold, style = MaterialTheme.typography.labelMedium)
+        Text("الحلقة ${e.episode}" + if (watched) " — شوهدت" else "", color = C.Muted, style = MaterialTheme.typography.labelMedium)
         Text(e.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (!e.overview.isNullOrBlank()) {
             Text(e.overview, color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -598,14 +616,14 @@ private fun SourceRow(s: StreamInfo, best: Boolean, fr: FocusRequester?, onPick:
     Focusable({ onPick(s.stream) }, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp), lift = 1.02f, focusRequester = fr, ring = false) { f ->
         Column(Modifier.fillMaxWidth().background(if (f) C.Ink600 else C.Ink800).padding(horizontal = 14.dp, vertical = 11.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(s.quality, color = C.Gold, style = MaterialTheme.typography.labelLarge)
+                Text(s.quality, color = C.Paper, style = MaterialTheme.typography.labelLarge)
                 if (s.hdr) Text("HDR", color = C.Paper, style = MaterialTheme.typography.labelMedium)
                 if (s.size != null) Text(s.size, color = C.Muted, style = MaterialTheme.typography.labelMedium)
-                if (s.cached) Text("فوري", color = C.Gold, style = MaterialTheme.typography.labelMedium)
+                if (s.cached) Text("فوري", color = C.Paper.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
                 if (s.isTorrent) Text("${s.seeders ?: 0} مشارك", color = C.Muted, style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.weight(1f))
                 if (best) Text("الأنسب", color = C.Ink950, style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.background(C.Gold, RoundedCornerShape(50)).padding(horizontal = 8.dp))
+                    modifier = Modifier.background(C.Paper, RoundedCornerShape(50)).padding(horizontal = 8.dp))
             }
             Text(
                 s.stream.filename ?: s.stream.title.lineSequence().firstOrNull() ?: s.stream.name,

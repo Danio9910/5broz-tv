@@ -141,17 +141,17 @@ fun ProfilesScreen(onChosen: () -> Unit) {
                                     Avatar(p, size)
                                     if (manage) {
                                         Box(Modifier.size(size).background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
-                                            Text("✎", fontSize = 30.sp, color = C.Paper)
+                                            Ic(Icons.Edit, 28.dp)
                                         }
                                     } else if (!p.pin.isNullOrBlank()) {
-                                        Text("🔒", Modifier.align(Alignment.BottomEnd).padding(6.dp), fontSize = 14.sp)
+                                        Ic(Icons.Lock, 15.dp, C.Paper, Modifier.align(Alignment.BottomEnd).padding(7.dp))
                                     }
                                 }
                             }
                             VSpace(10.dp)
                             Text(p.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if (p.isKids) Text("أطفال", color = C.Gold, style = MaterialTheme.typography.labelMedium)
-                            else if (p.family) Text("عائلي", color = C.Gold, style = MaterialTheme.typography.labelMedium)
+                            if (p.isKids) Text("أطفال", color = C.Muted, style = MaterialTheme.typography.labelMedium)
+                            else if (p.family) Text("عائلي", color = C.Muted, style = MaterialTheme.typography.labelMedium)
                         }
                     }
                     if (list.size < 8) {
@@ -163,9 +163,9 @@ fun ProfilesScreen(onChosen: () -> Unit) {
                                 focusRequester = if (list.isEmpty()) first else null,
                             ) { f ->
                                 Box(
-                                    Modifier.size(size).border(1.5.dp, if (f) C.Gold else C.Paper.copy(alpha = 0.25f), RoundedCornerShape(size * 0.22f)),
+                                    Modifier.size(size).border(1.5.dp, if (f) C.Paper else C.Paper.copy(alpha = 0.25f), RoundedCornerShape(size * 0.22f)),
                                     contentAlignment = Alignment.Center,
-                                ) { Text("+", fontSize = 40.sp, color = if (f) C.Gold else C.Muted) }
+                                ) { Ic(Icons.Plus, 34.dp, if (f) C.Paper else C.Muted) }
                             }
                             VSpace(10.dp)
                             Text("ملف جديد", color = C.Muted, style = MaterialTheme.typography.bodyLarge)
@@ -335,7 +335,7 @@ private fun ProfileEditor(start: Profile, onClose: () -> Unit, onSaved: () -> Un
 
                 Field(
                     p.pin ?: "", { p = p.copy(pin = it.filter(Char::isDigit).take(4).ifEmpty { null }) },
-                    "رقم سري من ٤ أرقام (اختياري)", {}, Modifier.fillMaxWidth(), numeric = true,
+                    "رقم سري من 4 أرقام (اختياري)", {}, Modifier.fillMaxWidth(), numeric = true,
                 )
 
                 if (error.isNotEmpty()) Text(error, color = C.Danger, style = MaterialTheme.typography.bodyMedium)
