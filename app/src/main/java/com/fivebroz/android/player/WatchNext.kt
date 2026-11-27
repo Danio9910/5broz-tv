@@ -59,9 +59,11 @@ object WatchNext {
             val program = b.build()
             if (existing > 0) {
                 helper.updateWatchNextProgram(program, existing)
+                Log.i("5broz", "watch next updated id=$existing pos=$positionSec")
             } else {
                 val id = helper.publishWatchNextProgram(program)
                 if (id > 0) sp.edit().putLong(metaId, id).apply()
+                Log.i("5broz", "watch next published id=$id pos=$positionSec")
             }
         } catch (e: Exception) {
             Log.w("5broz", "watch next: ${e.message}")
