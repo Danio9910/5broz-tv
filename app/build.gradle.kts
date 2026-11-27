@@ -92,6 +92,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-session:$media3")
+    // Software audio decoders (AC3, E-AC3, DTS, TrueHD…) so "5.1" releases play on every device, like VLC.
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:$media3+1")
     implementation("androidx.tvprovider:tvprovider:1.0.0")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
 }
