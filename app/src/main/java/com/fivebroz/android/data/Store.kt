@@ -18,6 +18,11 @@ object Prefs {
     }
 
     val testAddon: String? get() = sp.getString("test_addon", null)
+    // Debug-only switches the e2e runs use to photograph seasonal / evening moments.
+    private val dbg get() = com.fivebroz.android.BuildConfig.DEBUG
+    val forcedSeason: String? get() = if (dbg) sp.getString("force_season", null) else null
+    val forceMovieNight: Boolean get() = dbg && sp.getBoolean("force_night", false)
+    val forceRecap: Boolean get() = dbg && sp.getBoolean("force_recap", false)
 
     fun cacheFile(name: String): java.io.File? = dir?.let { java.io.File(it, name) }
 
@@ -146,6 +151,9 @@ object Prefs {
     var trailerBackground: Boolean
         get() = sp.getBoolean("trailerBg", false)
         set(v) = sp.edit().putBoolean("trailerBg", v).apply()
+    var heroTrailer: Boolean
+        get() = sp.getBoolean("heroTrailer", true)
+        set(v) = sp.edit().putBoolean("heroTrailer", v).apply()
     var screensaver: Boolean
         get() = sp.getBoolean("saver", true)
         set(v) = sp.edit().putBoolean("saver", v).apply()
@@ -268,6 +276,40 @@ object Db {
     }
 
     // ---------- watch progress ----------
+
+    data class YearRecap(val year: Int, val titles: Int, val episodes: Int, val hours: Int, val top: Preview?, val topCount: Int, val films: Int)
+
+    /** "ملخص 5broz": what this profile watched since 1 January. */
+    suspend fun yearRecap(): YearRecap? {
+        val p = pid ?: return null
+        val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        return try {
+            val rows = select(
+                "watch_progress?select=meta_id,video_id,type,name,poster,position_sec,duration_sec,finished" +
+                    "&profile_id=eq.${q(p)}&updated_at=gte.$year-01-01&limit=2000",
+            )
+            var secs = 0L
+            var episodes = 0
+            var films = 0
+            val perTitle = HashMap<String, Pair<Preview, Int>>()
+            for (i in 0 until rows.length()) {
+                val r = rows.optJSONObject(i) ?: continue
+                val meta = r.str("meta_id") ?: continue
+                val pos = r.optLong("position_sec", 0)
+                if (pos < 120) continue
+                secs += if (r.optBoolean("finished")) maxOf(pos, r.optLong("duration_sec", pos)) else pos
+                val series = r.str("type") == "series"
+                if (series) episodes++ else films++
+                val prev = perTitle[meta]
+                perTitle[meta] = (prev?.first ?: Preview(meta, if (series) "series" else "movie", r.str("name") ?: "", r.str("poster"))) to ((prev?.second ?: 0) + 1)
+            }
+            if (perTitle.isEmpty()) return YearRecap(year, 0, 0, 0, null, 0, 0)
+            val top = perTitle.values.maxByOrNull { it.second }
+            YearRecap(year, perTitle.size, episodes, (secs / 3600).toInt(), top?.first, top?.second ?: 0, films)
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     suspend fun continueWatching(): List<ResumeItem> {
         val p = pid ?: return emptyList()

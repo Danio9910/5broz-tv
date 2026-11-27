@@ -42,6 +42,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -78,6 +80,7 @@ fun ProfilesScreen(onChosen: () -> Unit) {
     var manage by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Profile?>(null) } // id "" = new
     var attempt by remember { mutableIntStateOf(0) }
+    var stage by remember { mutableStateOf<Profile?>(null) } // the chosen profile, on its spotlight
     val first = remember { FocusRequester() }
     val isTv = LocalIsTv.current
     val size = if (isTv) 112.dp else 96.dp
@@ -99,10 +102,7 @@ fun ProfilesScreen(onChosen: () -> Unit) {
             return
         }
         if (!p.pin.isNullOrBlank()) pinFor = p
-        else {
-            Prefs.choose(p)
-            onChosen()
-        }
+        else stage = p
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -181,9 +181,14 @@ fun ProfilesScreen(onChosen: () -> Unit) {
     pinFor?.let { p ->
         PinDialog(p, onDismiss = { pinFor = null }, onOk = {
             pinFor = null
+            stage = p
+        })
+    }
+    stage?.let { p ->
+        ProfileStage(p, size) {
             Prefs.choose(p)
             onChosen()
-        })
+        }
     }
     editing?.let { p ->
         ProfileEditor(
@@ -392,3 +397,46 @@ private fun Toggle(label: String, on: Boolean, modifier: Modifier, onChange: (Bo
         }
     }
 }
+
+
+/** The chosen profile steps into a spotlight, grows, and is greeted by name before the app opens. */
+@Composable
+private fun ProfileStage(p: Profile, size: androidx.compose.ui.unit.Dp, onDone: () -> Unit) {
+    val grow = remember { androidx.compose.animation.core.Animatable(1f) }
+    val light = remember { androidx.compose.animation.core.Animatable(0f) }
+    val words = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(p.id) {
+        launch { light.animateTo(1f, androidx.compose.animation.core.tween(420)) }
+        grow.animateTo(1.55f, androidx.compose.animation.core.spring(dampingRatio = 0.62f, stiffness = 260f))
+        words.animateTo(1f, androidx.compose.animation.core.tween(360))
+        kotlinx.coroutines.delay(650)
+        onDone()
+    }
+    Box(
+        Modifier.fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.88f * light.value))
+            .background(
+                androidx.compose.ui.graphics.Brush.radialGradient(
+                    listOf(C.Gold.copy(alpha = 0.30f * light.value), Color.Transparent),
+                    radius = 900f,
+                ),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.scale(grow.value)) { Avatar(p, size) }
+            Spacer(Modifier.size(size * 0.45f))
+            Text(
+                "${Season.current()?.greeting ?: greeting()} يا ${p.name}",
+                Modifier.alpha(words.value),
+                fontFamily = Amiri,
+                fontSize = 30.sp,
+                color = C.Paper,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+private fun Modifier.scale(s: Float) = this.then(androidx.compose.ui.draw.scale(s))
+private fun Modifier.alpha(a: Float) = this.then(androidx.compose.ui.draw.alpha(a))

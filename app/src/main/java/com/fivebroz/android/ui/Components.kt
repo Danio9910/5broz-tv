@@ -100,6 +100,8 @@ fun Focusable(
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val haptic = LocalHapticFeedback.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    val tv = LocalIsTv.current
     val target = when {
         pressed -> 0.96f
         focused -> lift
@@ -114,6 +116,8 @@ fun Focusable(
             .then(if (showRing) Modifier.shadow(22.dp, shape, ambientColor = Color.White.copy(alpha = 0.5f), spotColor = Color.White.copy(alpha = 0.5f)) else Modifier)
             .then(fr)
             .onFocusChanged {
+                // a soft tick as the remote moves (follows the TV's own sound setting)
+                if (tv && it.isFocused && !focused) view.playSoundEffect(android.view.SoundEffectConstants.NAVIGATION_DOWN)
                 focused = it.isFocused
                 if (it.isFocused) onFocus?.invoke()
             }
@@ -123,6 +127,7 @@ fun Focusable(
                 if (onLongClick == null) {
                     Modifier.clickable(source, indication = null) {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        if (tv) view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
                         onClick()
                     }
                 } else {
@@ -203,9 +208,20 @@ val LocalItemMenu = androidx.compose.runtime.staticCompositionLocalOf<((Preview)
 /** A soft breathing placeholder while content loads. */
 @Composable
 fun Skeleton(modifier: Modifier, shape: Shape = RoundedCornerShape(8.dp)) {
+    // A slow gold glint sweeping across, instead of a grey pulse.
     val t = rememberInfiniteTransition(label = "sk")
-    val a by t.animateFloat(0.35f, 0.7f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "a")
-    Box(modifier.clip(shape).background(C.Ink800.copy(alpha = a)))
+    val x by t.animateFloat(-1f, 2f, infiniteRepeatable(tween(1600)), label = "x")
+    Box(
+        modifier.clip(shape).background(C.Ink800).background(
+            Brush.linearGradient(
+                0f to Color.Transparent,
+                0.5f to C.Gold.copy(alpha = 0.10f),
+                1f to Color.Transparent,
+                start = androidx.compose.ui.geometry.Offset(x * 600f, 0f),
+                end = androidx.compose.ui.geometry.Offset(x * 600f + 400f, 200f),
+            ),
+        ),
+    )
 }
 
 @Composable
@@ -237,7 +253,7 @@ fun Poster(
     Focusable(
         { Shared.opened = inst; Shared.openedAt = System.currentTimeMillis(); onClick() },
         Modifier.width(width).aspectRatio(2f / 3f).sharedArt(inst.takeIf { Shared.opened == it }),
-        RoundedCornerShape(if (Prefs.profileKids) 14.dp else 8.dp),
+        RoundedCornerShape(if (Prefs.profileKids) 20.dp else 8.dp),
         onFocus = onFocus,
         onLongClick = menu?.let { m -> { m(item) } },
     ) {
@@ -328,7 +344,10 @@ fun WideCard(
         ) {
             Box(Modifier.fillMaxSize().background(C.Ink800)) {
                 item.badge?.let { Badge(it, Modifier.align(Alignment.TopStart).zIndex(1f)) }
-                Img(item.background ?: item.poster, Modifier.fillMaxSize(), item.name)
+                val ctx = LocalContext.current
+                // where you stopped, if we have the frame
+                val frame = remember(item.id, progress) { if (progress != null) com.fivebroz.android.player.Frames.url(ctx, item.id) else null }
+                Img(frame ?: item.background ?: item.poster, Modifier.fillMaxSize(), item.name)
                 Box(
                     Modifier.fillMaxSize().background(
                         Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.75f)),
@@ -362,15 +381,16 @@ fun WideCard(
 fun RankedPoster(rank: Int, item: Preview, width: Dp, onClick: () -> Unit, onFocus: (() -> Unit)? = null) {
     // Fixed to the poster's height so the numeral never pushes the row taller.
     Box(Modifier.width(width * 1.55f).height(width * 1.5f)) {
+        // Gold-foil outline numerals.
         Text(
             "$rank",
-            Modifier.align(Alignment.BottomStart).offset(y = 14.dp),
+            Modifier.align(Alignment.BottomStart).offset(y = 18.dp),
             style = TextStyle(
-                fontFamily = Cairo,
-                fontWeight = FontWeight.Bold,
-                fontSize = (width.value * 0.8f).sp,
-                color = C.Ink950,
-                shadow = androidx.compose.ui.graphics.Shadow(C.Paper.copy(alpha = 0.75f), blurRadius = 2.5f),
+                fontFamily = Cormorant,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = (width.value * 1.05f).sp,
+                brush = Brush.verticalGradient(listOf(Color(0xFFF3E3B5), C.Gold, Color(0xFF8A6A33))),
+                drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f),
             ),
         )
         Box(Modifier.align(Alignment.BottomEnd)) { Poster(item, width, onClick, onFocus = onFocus) }
@@ -515,10 +535,18 @@ fun TitleArt(
             modifier = modifier.height(maxHeight).androidxWidthIn(maxWidth),
         )
     } else {
+        // No artwork: set the name in Amiri (Arabic) / Cormorant (Latin), like a film's title card.
+        val arabic = name.any { it in '\u0600'..'\u06FF' }
         Text(
             name,
             modifier = modifier,
-            style = style,
+            style = style.copy(
+                fontFamily = if (arabic) Amiri else Cormorant,
+                fontWeight = if (arabic) FontWeight.Bold else FontWeight.SemiBold,
+                fontSize = style.fontSize * (if (arabic) 1.08f else 1.15f),
+                lineHeight = style.fontSize * (if (arabic) 1.5f else 1.2f),
+                shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.5f), blurRadius = 18f),
+            ),
             textAlign = if (center) TextAlign.Center else TextAlign.Start,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -569,6 +597,7 @@ fun rememberAmbient(url: String?): Color {
 fun GenreRow(genres: List<com.fivebroz.android.data.GenreTile>, gutter: Dp, onGenre: (com.fivebroz.android.data.GenreTile) -> Unit) {
     if (genres.isEmpty()) return
     val tv = LocalIsTv.current
+    if (Prefs.profileKids) return KidsGenreRow(genres, gutter, onGenre)
     val w = if (tv) 230.dp else 168.dp
     Column(Modifier.fillMaxWidth().padding(bottom = if (tv) 18.dp else 22.dp)) {
         SectionTitle("تصفّح حسب النوع", Modifier.padding(horizontal = gutter, vertical = 6.dp))
@@ -580,6 +609,38 @@ fun GenreRow(genres: List<com.fivebroz.android.data.GenreTile>, gutter: Dp, onGe
                         Img(g.image, Modifier.fillMaxSize())
                         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.15f), 1f to Color.Black.copy(alpha = 0.75f))))
                         Text(g.name, Modifier.align(Alignment.BottomStart).padding(12.dp), style = MaterialTheme.typography.titleMedium, color = C.Paper)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private val KidColors = listOf(
+    listOf(Color(0xFFFF8A65), Color(0xFFFF5E8A)),
+    listOf(Color(0xFF4FC3F7), Color(0xFF7C4DFF)),
+    listOf(Color(0xFFFFD54F), Color(0xFFFF9800)),
+    listOf(Color(0xFF81C784), Color(0xFF26A69A)),
+    listOf(Color(0xFFBA68C8), Color(0xFFF06292)),
+)
+
+/** Kids' world: big, round, bright tiles with the picture in a bubble. */
+@Composable
+private fun KidsGenreRow(genres: List<com.fivebroz.android.data.GenreTile>, gutter: Dp, onGenre: (com.fivebroz.android.data.GenreTile) -> Unit) {
+    val tv = LocalIsTv.current
+    val w = if (tv) 190.dp else 136.dp
+    Column(Modifier.fillMaxWidth().padding(bottom = 22.dp)) {
+        Text("عالم الصغار ✨", Modifier.padding(horizontal = gutter, vertical = 6.dp), fontFamily = Amiri, fontSize = 24.sp, color = C.Paper)
+        LazyRow(contentPadding = PaddingValues(horizontal = gutter, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(genres.size) { i ->
+                val g = genres[i]
+                Focusable({ onGenre(g) }, Modifier.width(w).aspectRatio(1f), RoundedCornerShape(28.dp), lift = 1.1f) {
+                    Box(Modifier.fillMaxSize().background(Brush.linearGradient(KidColors[i % KidColors.size])), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Img(g.image, Modifier.size(w * 0.5f).clip(androidx.compose.foundation.shape.CircleShape).border(3.dp, Color.White, androidx.compose.foundation.shape.CircleShape))
+                            VSpace(8.dp)
+                            Text(g.name, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
             }

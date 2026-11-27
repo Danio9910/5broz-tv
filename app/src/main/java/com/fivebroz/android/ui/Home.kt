@@ -38,6 +38,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.FocusRequester
@@ -63,7 +65,7 @@ import java.util.Calendar
 /** Title artwork already looked up this session (null = the title has none). */
 private val logoCache = HashMap<String, String?>()
 
-private fun greeting(): String {
+internal fun greeting(): String {
     val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     return when {
         h < 5 -> "ليلة سعيدة"
@@ -173,17 +175,26 @@ private fun PhoneHome(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    // Ambient glow: the page beneath the hero takes on the colour of the title showing.
+    var heroItem by remember { mutableStateOf<Preview?>(null) }
+    val glow = rememberAmbient(heroItem?.background ?: heroItem?.poster)
+    // Kids get a brighter, playful night sky; everyone else the hero's colour.
+    val sky = if (kids) Brush.verticalGradient(0f to Color(0xFF3A2B70), 0.45f to Color(0xFF15405A), 1f to C.Ink950)
+    else Brush.verticalGradient(0f to glow, 0.55f to C.Ink950)
+    Box(Modifier.fillMaxSize().background(sky)) {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
             item("hero") {
                 if (home == null) Skeleton(Modifier.fillMaxWidth().height(heroH), RectShape)
-                else if (home.heroes.isNotEmpty()) PhoneHero(home.heroes, heroH, tablet, onOpen)
+                else if (home.heroes.isNotEmpty()) PhoneHero(home.heroes, heroH, tablet, onOpen) { heroItem = it }
             }
             if (home == null) {
                 item("sk") { SkeletonRows(g) }
             } else {
                 item("health") { HealthNotice(g) }
+                item("season") { SeasonBanner(g) }
+                item("night") { MovieNightCard(g, onOpen) }
                 if (resume.isNotEmpty()) item("resume") { ContinueRow(resume, g) }
+                item("recap") { YearRecapCard(g, onOpen = onOpen) }
                 if (home.top10.isNotEmpty()) item("top10") {
                     PosterRow(top10Title(kids, family), home.top10, onOpen, g, ranked = true)
                 }
@@ -252,7 +263,7 @@ private fun JoinChip(g: Dp) {
 
 /** Swipeable poster hero — tall artwork, title and one clear action, centred. */
 @Composable
-private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (Preview) -> Unit) {
+private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (Preview) -> Unit, onPage: (Preview?) -> Unit = {}) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var starting by remember { mutableStateOf(false) }
@@ -263,11 +274,29 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
             if (!pager.isScrollInProgress) pager.animateScrollToPage((pager.currentPage + 1) % items.size, animationSpec = tween(600))
         }
     }
+    // Trailer preview: after the hero has rested on a title for a few seconds, its trailer plays muted.
+    var trailer by remember { mutableStateOf<Pair<Int, String>?>(null) }
+    var muted by remember { mutableStateOf(true) }
+    LaunchedEffect(pager.currentPage, items) {
+        trailer = null
+        muted = true
+        if (!Prefs.heroTrailer || Prefs.profileKids) return@LaunchedEffect
+        val page = pager.currentPage
+        val p = items.getOrNull(page) ?: return@LaunchedEffect
+        val key = runCatching { com.fivebroz.android.data.Api.detail(p.type, p.id)?.trailer }.getOrNull() ?: return@LaunchedEffect
+        trailer = page to key
+    }
+    LaunchedEffect(trailer) { onPage(items.getOrNull(pager.currentPage)) }
+    LaunchedEffect(pager.currentPage) { onPage(items.getOrNull(pager.currentPage)) }
     Box(Modifier.fillMaxWidth().height(height)) {
         HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
             val it = items[page]
             Box(Modifier.fillMaxSize()) {
                 Img(if (wide) it.background ?: it.poster else it.poster ?: it.background, Modifier.fillMaxSize().kenBurns(), it.name)
+                trailer?.takeIf { t -> t.first == page }?.let { t ->
+                    // a 16:9 video scaled to cover the hero
+                    TrailerBackground(t.second, Modifier.fillMaxSize().graphicsLayer { if (!wide) { scaleX = 2.2f; scaleY = 2.2f } }, muted = muted, enabled = true)
+                }
                 Box(
                     Modifier.fillMaxSize().background(
                         Brush.verticalGradient(
@@ -306,6 +335,13 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
             GoldButton("التفاصيل", { onOpen(items[pager.currentPage]) }, filled = false, icon = Icons.Info)
         }
         if (items.size > 1) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp)) { Dots(items.size, pager.currentPage) }
+        if (trailer?.first == pager.currentPage) {
+            Focusable({ muted = !muted }, Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 30.dp), shape = CircleShape, lift = 1.05f, ring = false) {
+                Box(Modifier.size(36.dp).background(C.Ink950.copy(alpha = 0.55f)).border(1.dp, C.Paper.copy(alpha = 0.3f), CircleShape), contentAlignment = Alignment.Center) {
+                    Ic(if (muted) Icons.Mute else Icons.Sound, 18.dp)
+                }
+            }
+        }
     }
 }
 
@@ -418,6 +454,7 @@ private fun TvHome(
         }
     }
 
+    val tvGlow = rememberAmbient(shown?.background ?: shown?.poster)
     Box(Modifier.fillMaxSize()) {
         Crossfade(shown, animationSpec = tween(500), label = "bg") { p ->
             Box(Modifier.fillMaxSize()) {
@@ -431,7 +468,7 @@ private fun TvHome(
         )
         Box(
             Modifier.fillMaxSize().background(
-                Brush.verticalGradient(0f to Color.Transparent, 0.35f to C.Ink950.copy(alpha = 0.25f), 0.62f to C.Ink950.copy(alpha = 0.92f), 1f to C.Ink950),
+                Brush.verticalGradient(0f to Color.Transparent, 0.35f to tvGlow.copy(alpha = 0.25f), 0.62f to tvGlow.copy(alpha = 0.92f), 1f to C.Ink950),
             ),
         )
 

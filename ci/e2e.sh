@@ -16,6 +16,9 @@ cat > /tmp/5broz.xml <<XML
     <boolean name="gate" value="true" />
     <string name="pid">guest</string>
     <string name="pname">اختبار</string>
+    <string name="force_season">Ramadan</string>
+    <boolean name="force_night" value="true" />
+    <boolean name="force_recap" value="true" />
 </map>
 XML
 adb push /tmp/5broz.xml /data/local/tmp/5broz.xml
@@ -50,7 +53,9 @@ SIZE=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1); W=${SIZE%x*}; H=$
 echo "screen ${W}x${H}"
 adb logcat -c
 adb shell am start -n $PKG/.MainActivity
-sleep 20; shot 1-home
+sleep 0.5; shot 0a-intro
+sleep 0.4; shot 0b-intro
+sleep 19; shot 1-home
 adb shell input swipe $((W/2)) $((H*3/4)) $((W/2)) $((H/4)) 400
 sleep 2; shot 1b-home-scrolled
 # Long-press a poster: the quick-actions menu.
@@ -105,6 +110,8 @@ sleep 6
 adb shell input tap $CX $CY; sleep 0.7      # show controls
 adb shell input tap $CX $CY; sleep 2        # big centre button = pause
 shot 6a-paused
+sleep 8; shot 6a2-pause-screen
+adb shell input tap $CX $CY; sleep 1.5       # bring the controls back
 tap_text "السرعة"
 sleep 2; shot 6d-speed
 tap_text "1.5×"; sleep 1
@@ -112,6 +119,7 @@ sleep 1; shot 6e-speed-set
 tap_text "المزيد"; sleep 2; shot 6b0-more
 tap_text "غرفة مشاهدة"
 sleep 8; shot 6b-party
+tap_text "🔥"; tap_text "❤️"; sleep 0.8; shot 6b1-reactions
 adb shell input keyevent 4; sleep 2
 tap_text "الترجمة"
 sleep 2; shot 6c-subtitles

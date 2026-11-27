@@ -41,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -101,6 +102,8 @@ class PlayerUi {
     var partyCode by mutableStateOf("")
     var bubble by mutableStateOf<String?>(null)
     val messages = androidx.compose.runtime.mutableStateListOf<com.fivebroz.android.data.PartyMessage>()
+    /** Emoji reactions floating up the screen in a watch party (id to emoji). */
+    val floaters = androidx.compose.runtime.mutableStateListOf<Pair<Long, String>>()
     var lastPoke = 0L
 }
 
@@ -323,8 +326,50 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
                 }
             }
         }
+        // Watch party: tap an emoji, everyone in the room sees it float up.
+        if (ui.partyCode.isNotEmpty() && ui.visible && !ui.chatOpen && !ui.subsOpen && !ui.moreOpen) {
+            Row(
+                Modifier.align(Alignment.CenterEnd).padding(end = 14.dp)
+                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50)).padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                androidx.compose.foundation.layout.Column {
+                    REACTIONS.forEach { e ->
+                        Focusable({ a.sendChat(e) }, shape = androidx.compose.foundation.shape.CircleShape, lift = 1.2f, ring = false) {
+                            Text(e, Modifier.padding(7.dp), fontSize = 22.sp)
+                        }
+                    }
+                }
+            }
+        }
+        ui.floaters.forEach { (id, e) -> androidx.compose.runtime.key(id) { Floater(id, e) { ui.floaters.removeAll { it.first == id } } } }
         if (ui.chatOpen) ChatPanel(ui, a)
     }
+}
+
+val REACTIONS = listOf("❤️", "😂", "😮", "👏", "🔥", "😢")
+
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.Floater(id: Long, emoji: String, onDone: () -> Unit) {
+    val t = remember { androidx.compose.animation.core.Animatable(0f) }
+    val lane = remember { ((id % 5) - 2) * 18f }
+    LaunchedEffect(Unit) {
+        t.animateTo(1f, androidx.compose.animation.core.tween(2600, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
+        onDone()
+    }
+    Text(
+        emoji,
+        Modifier.align(Alignment.BottomEnd).padding(end = 70.dp, bottom = 90.dp).graphicsLayer {
+            val v = t.value
+            translationY = -v * 520f * density / 2.6f
+            translationX = (lane + kotlin.math.sin(v * 9f) * 14f) * density
+            val sc = if (v < 0.15f) v / 0.15f * 1.3f else 1.3f - (v - 0.15f) * 0.35f
+            scaleX = sc
+            scaleY = sc
+            alpha = if (v > 0.7f) (1f - v) / 0.3f else 1f
+        },
+        fontSize = 34.sp,
+    )
 }
 
 @Composable
@@ -669,6 +714,13 @@ private fun ChatPanel(ui: PlayerUi, a: PlayerActions) {
                     Column(Modifier.fillMaxWidth().background(C.Ink800, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp)) {
                         Text(m.sender ?: "ضيف", color = C.Gold, style = MaterialTheme.typography.labelMedium)
                         Text(m.body, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                REACTIONS.forEach { e ->
+                    Focusable({ a.sendChat(e) }, shape = androidx.compose.foundation.shape.CircleShape, lift = 1.2f, ring = false) {
+                        Text(e, Modifier.padding(6.dp), fontSize = 22.sp)
                     }
                 }
             }

@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
@@ -56,6 +58,8 @@ class MainActivity : ComponentActivity() {
                 FiveBrozTheme {
                     Box(Modifier.fillMaxSize().background(C.Ink950)) {
                         AppNav()
+                        var intro by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(savedInstanceState == null) }
+                        if (intro) com.fivebroz.android.ui.LaunchIntro { intro = false }
                     }
                 }
             }

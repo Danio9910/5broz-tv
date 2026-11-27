@@ -67,6 +67,9 @@ private fun cormorant(w: Int) = Font(
 val Cairo = FontFamily(cairo(400), cairo(500), cairo(600), cairo(700))
 val Cormorant = FontFamily(cormorant(500), cormorant(600))
 
+/** Classical Arabic display face for titles that have no artwork of their own. */
+val Amiri = FontFamily(Font(R.font.amiri_bold, FontWeight.Bold))
+
 /** Whether we are running on a television (D-pad, 10-foot UI). */
 val LocalIsTv = staticCompositionLocalOf { false }
 

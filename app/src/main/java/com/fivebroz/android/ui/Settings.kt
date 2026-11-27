@@ -133,6 +133,7 @@ fun SettingsScreen(onBack: () -> Unit, onAddons: () -> Unit) {
                     Choice("أختار المصدر بنفسي دائماً", Prefs.streamMode == "manual") { Prefs.streamMode = "manual"; changed() }
                     Choice("الوضع الليلي للصوت", Prefs.nightMode) { Prefs.nightMode = !Prefs.nightMode; changed() }
                     Choice("الإعلان خلفية لصفحة العنوان", Prefs.trailerBackground) { Prefs.trailerBackground = !Prefs.trailerBackground; changed() }
+                    if (!tv) Choice("إعلان صامت في واجهة الرئيسية", Prefs.heroTrailer) { Prefs.heroTrailer = !Prefs.heroTrailer; changed() }
                     if (tv) {
                         Choice("مطابقة معدّل الإطارات", Prefs.matchFrameRate) { Prefs.matchFrameRate = !Prefs.matchFrameRate; changed() }
                         Choice("شاشة التوقف", Prefs.screensaver) { Prefs.screensaver = !Prefs.screensaver; changed() }
@@ -170,6 +171,8 @@ fun SettingsScreen(onBack: () -> Unit, onAddons: () -> Unit) {
             if (!Prefs.profileKids) {
                 Section("Trakt", "مزامنة ما تشاهده، وقائمتك وتوصياتك من Trakt تظهر في الرئيسية. لكل ملف حسابه.") { TraktLink() }
             }
+
+            Section("ملخص 5broz", "سنتك في المشاهدة حتى اليوم.") { YearRecapCard(0.dp, always = true) }
 
             Section("عن التطبيق") {
                 Text("5broz — الإصدار ${com.fivebroz.android.BuildConfig.VERSION_NAME}", color = C.Muted)

@@ -77,8 +77,8 @@ fun Screensaver(items: List<Preview>) {
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun TrailerBackground(key: String?, modifier: Modifier) {
-    if (key == null || !com.fivebroz.android.data.Prefs.trailerBackground) return
+fun TrailerBackground(key: String?, modifier: Modifier, muted: Boolean = true, enabled: Boolean = com.fivebroz.android.data.Prefs.trailerBackground) {
+    if (key == null || !enabled) return
     var show by remember { mutableStateOf(false) }
     LaunchedEffect(key) {
         delay(3500)
@@ -96,11 +96,20 @@ fun TrailerBackground(key: String?, modifier: Modifier) {
                     val html = """
                         <html><body style="margin:0;background:#000;overflow:hidden">
                         <iframe width="100%" height="100%" frameborder="0" allow="autoplay; encrypted-media"
-                          src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&loop=1&playlist=$key&modestbranding=1&playsinline=1&rel=0&iv_load_policy=3"></iframe>
+                          src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&loop=1&playlist=$key&modestbranding=1&playsinline=1&rel=0&iv_load_policy=3&enablejsapi=1"></iframe>
                         </body></html>
                     """.trimIndent()
                     loadDataWithBaseURL("https://www.5broz.com", html, "text/html", "utf-8", null)
                 }
+            },
+            update = { w ->
+                // the YouTube player takes commands by postMessage
+                val cmd = if (muted) "mute" else "unMute"
+                w.evaluateJavascript(
+                    "var f=document.querySelector('iframe');if(f){f.contentWindow.postMessage(JSON.stringify({event:'command',func:'$cmd',args:[]}),'*');" +
+                        (if (muted) "" else "f.contentWindow.postMessage(JSON.stringify({event:'command',func:'setVolume',args:[100]}),'*');") + "}",
+                    null,
+                )
             },
             onRelease = { it.destroy() },
             modifier = Modifier.fillMaxSize(),

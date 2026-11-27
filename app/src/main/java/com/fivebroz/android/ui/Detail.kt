@@ -44,6 +44,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -351,10 +352,25 @@ private fun PhoneDetail(
 
     val ambient = rememberAmbient(d.base.background ?: d.base.poster)
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to ambient, 0.75f to C.Ink950))) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp)) {
+        val list = androidx.compose.foundation.lazy.rememberLazyListState()
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val headPx = with(density) { headH.toPx() }
+        // 0 at the top, 1 once the header has scrolled away
+        val past by androidx.compose.runtime.remember {
+            androidx.compose.runtime.derivedStateOf {
+                if (list.firstVisibleItemIndex > 0) 1f else (list.firstVisibleItemScrollOffset / headPx).coerceIn(0f, 1f)
+            }
+        }
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 28.dp)) {
             item("head") {
                 val artKey = remember { Shared.fresh() }
-                Box(Modifier.fillMaxWidth().height(headH).sharedArt(artKey)) {
+                Box(
+                    Modifier.fillMaxWidth().height(headH).sharedArt(artKey).graphicsLayer {
+                        // parallax: the picture moves at half speed and dims as it leaves
+                        if (list.firstVisibleItemIndex == 0) translationY = list.firstVisibleItemScrollOffset * 0.5f
+                        alpha = 1f - past * 0.6f
+                    },
+                ) {
                     Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().kenBurns())
                     TrailerBackground(d.trailer, Modifier.fillMaxSize())
                     Box(
@@ -411,11 +427,11 @@ private fun PhoneDetail(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         val w = Modifier.weight(1f)
                         // Four clear actions; the rest live under "more".
-                        ActionIcon(if (saved) Icons.Check else Icons.Plus, "قائمتي", toggleSaved, on = saved, modifier = w)
+                        ActionIcon(if (saved) Icons.Check else Icons.Plus, "قائمتي", toggleSaved, on = saved, modifier = w, fly = d.base.poster)
                         ActionIcon(
                             when (x.rating) { 1 -> Icons.ThumbUp; -1 -> Icons.ThumbDown; else -> Icons.Star },
                             when (x.rating) { 1 -> "أعجبني"; -1 -> "ليس لي"; else -> "تقييم" },
-                            { x.openSheet("rate") }, on = x.rating != 0, modifier = w,
+                            { x.openSheet("rate") }, on = x.rating != 0, modifier = w, cheer = x.rating.takeIf { it == 1 },
                         )
                         x.onTrailer?.let { ActionIcon(Icons.Trailer, "الإعلان", it, modifier = w) }
                         ActionIcon(Icons.More, "المزيد", { x.openSheet("more") }, modifier = w)
@@ -451,7 +467,7 @@ private fun PhoneDetail(
             }
             if (d.collection.size > 1) item("collection") {
                 VSpace(14.dp)
-                PosterRow(d.collectionName ?: "السلسلة", d.collection, onOpen, g)
+                CollectionShelf(d.collectionName ?: "السلسلة", d.collection, onOpen, g)
             }
             if (d.related.isNotEmpty() && !com.fivebroz.android.data.Prefs.profileKids) item("related") {
                 VSpace(14.dp)
@@ -459,6 +475,20 @@ private fun PhoneDetail(
             }
         }
 
+        // compact title bar: the logo settles small at the top once the header is gone
+        val bar = ((past - 0.75f) * 4f).coerceIn(0f, 1f)
+        if (bar > 0f) {
+            Box(
+                Modifier.fillMaxWidth().graphicsLayer { alpha = bar }
+                    .background(Brush.verticalGradient(0f to C.Ink950, 1f to C.Ink950.copy(alpha = 0.82f)))
+                    .statusBarsPadding().height(62.dp).padding(start = 62.dp, end = 16.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Box(Modifier.graphicsLayer { translationY = (1f - bar) * 18f }) {
+                    TitleArt(d.base.name, d.base.logo, 34.dp, 150.dp, MaterialTheme.typography.titleMedium)
+                }
+            }
+        }
         Focusable(onBack, Modifier.statusBarsPadding().padding(12.dp), shape = CircleShape, lift = 1f, ring = false) {
             Box(Modifier.size(38.dp).background(C.Ink950.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
                 Ic(Icons.Back, 20.dp)
@@ -499,10 +529,62 @@ private fun CertBadge(text: String) {
 }
 
 @Composable
-private fun ActionIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit, on: Boolean = false, modifier: Modifier = Modifier) {
-    Focusable(onClick, modifier, shape = RoundedCornerShape(10.dp), lift = 1f, ring = false) {
+private fun ActionIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    on: Boolean = false,
+    modifier: Modifier = Modifier,
+    fly: String? = null, // a poster that flies up and away when this turns on ("added to my list")
+    cheer: Any? = null, // celebrate when this changes to a non-null value (e.g. a like chosen from a sheet)
+) {
+    // Turning something on (my list, a like) gets a small celebration: a pop, a gold sparkle and a tap.
+    var armed by remember { mutableStateOf(false) }
+    val pop = remember { androidx.compose.animation.core.Animatable(1f) }
+    val burst = remember { androidx.compose.animation.core.Animatable(1f) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    var firstCheer by remember { mutableStateOf(true) }
+    var go by remember { mutableIntStateOf(0) }
+    LaunchedEffect(on) { if (on && armed) { armed = false; go++ } }
+    LaunchedEffect(cheer) { if (firstCheer) firstCheer = false else if (cheer != null) go++ }
+    LaunchedEffect(go) {
+        if (go == 0) return@LaunchedEffect
+        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+        burst.snapTo(0f)
+        launch { burst.animateTo(1f, androidx.compose.animation.core.tween(650)) }
+        pop.animateTo(1.35f, androidx.compose.animation.core.tween(120))
+        pop.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.4f, stiffness = 400f))
+    }
+    Focusable({ armed = !on; onClick() }, modifier, shape = RoundedCornerShape(10.dp), lift = 1f, ring = false) {
         Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Ic(icon, 24.dp, if (on) C.Gold else C.Paper)
+            Box(contentAlignment = Alignment.Center) {
+                if (burst.value < 1f) {
+                    androidx.compose.foundation.Canvas(Modifier.size(64.dp)) {
+                        val t = burst.value
+                        val c = center
+                        for (k in 0 until 10) {
+                            val ang = Math.toRadians(k * 36.0 + 18 * (k % 2))
+                            val r = size.minDimension * (0.18f + 0.34f * t) * if (k % 2 == 0) 1f else 0.75f
+                            val p = androidx.compose.ui.geometry.Offset(c.x + (Math.cos(ang) * r).toFloat(), c.y + (Math.sin(ang) * r).toFloat())
+                            drawCircle(C.Gold.copy(alpha = (1f - t).coerceIn(0f, 1f)), (if (k % 2 == 0) 3.2f else 2.2f) * density * (1f - t * 0.5f), p)
+                        }
+                    }
+                    if (fly != null) {
+                        Img(
+                            fly,
+                            Modifier.size(34.dp, 50.dp).graphicsLayer {
+                                val t = burst.value
+                                translationY = -t * 260f * density
+                                scaleX = 1f - t * 0.6f
+                                scaleY = 1f - t * 0.6f
+                                alpha = 1f - t
+                                rotationZ = -t * 12f
+                            }.clipRounded(4.dp),
+                        )
+                    }
+                }
+                Box(Modifier.graphicsLayer { scaleX = pop.value; scaleY = pop.value }) { Ic(icon, 24.dp, if (on) C.Gold else C.Paper) }
+            }
             Text(label, style = MaterialTheme.typography.labelMedium, color = C.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -648,7 +730,7 @@ private fun TvDetail(
                 }
             }
             if (d.people.isNotEmpty() && !com.fivebroz.android.data.Prefs.profileKids) item("cast") { CastRow(d.people, g, x.onPerson) }
-            if (d.collection.size > 1) item("collection") { PosterRow(d.collectionName ?: "السلسلة", d.collection, onOpen, g) }
+            if (d.collection.size > 1) item("collection") { CollectionShelf(d.collectionName ?: "السلسلة", d.collection, onOpen, g) }
             if (d.related.isNotEmpty() && !com.fivebroz.android.data.Prefs.profileKids) item("related") { PosterRow("قد يعجبك أيضاً", d.related, onOpen, g) }
         }
         }

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -363,6 +364,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     // ---- page data (loading screen, episode picker) ----
     private var backdrop by mutableStateOf<String?>(null)
     private var logo by mutableStateOf<String?>(null)
+    private var pageDetail by mutableStateOf<com.fivebroz.android.data.Detail?>(null)
     private var allEpisodes by mutableStateOf<List<com.fivebroz.android.data.Episode>>(emptyList())
 
     override val episodes get() = allEpisodes
@@ -728,7 +730,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         val t = text.trim()
         if (t.isEmpty()) return
         val me = com.fivebroz.android.data.Prefs.profileName.ifBlank { "ضيف" }
-        ui.messages.add(com.fivebroz.android.data.PartyMessage("local-${System.nanoTime()}", me, t))
+        if (t in REACTIONS) ui.floaters.add(System.nanoTime() to t)
+        else ui.messages.add(com.fivebroz.android.data.PartyMessage("local-${System.nanoTime()}", me, t))
         lifecycleScope.launch { com.fivebroz.android.data.Parties.send(id, me, t) }
     }
 
@@ -769,13 +772,17 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                 if (n % 3 == 0) {
                     val msgs = com.fivebroz.android.data.Parties.messages(id)
                     if (msgs.isNotEmpty() && msgs.last().id != lastSeenMsg) {
-                        val fresh = lastSeenMsg != null
+                        val before = lastSeenMsg
                         lastSeenMsg = msgs.last().id
+                        val me = com.fivebroz.android.data.Prefs.profileName.ifBlank { "ضيف" }
+                        // New since last look (my own reactions already floated when I sent them).
+                        val newOnes = if (before == null) emptyList() else msgs.drop(msgs.indexOfFirst { it.id == before } + 1)
+                        newOnes.filter { it.body in REACTIONS && it.sender != me }.take(8).forEach { ui.floaters.add(System.nanoTime() to it.body) }
                         ui.messages.clear()
-                        ui.messages.addAll(msgs)
-                        if (fresh && !ui.chatOpen) {
-                            val m = msgs.last()
-                            ui.bubble = "${m.sender ?: "ضيف"}: ${m.body}"
+                        ui.messages.addAll(msgs.filter { it.body !in REACTIONS })
+                        val text = newOnes.lastOrNull { it.body !in REACTIONS }
+                        if (text != null && !ui.chatOpen) {
+                            ui.bubble = "${text.sender ?: "ضيف"}: ${text.body}"
                             launch { delay(5000); ui.bubble = null }
                         }
                     }
@@ -976,6 +983,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             val d = runCatching { Api.detail(args.type, args.metaId) }.getOrNull() ?: return@launch
             backdrop = d.base.background
             logo = d.base.logo
+            pageDetail = d
             val eps = d.episodes.filter { it.season > 0 }
             allEpisodes = eps
             if (args.type == "series" && args.queueIds.isEmpty() && partyId == null) {
@@ -1197,6 +1205,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         lifecycleScope.launch {
             Db.saveProgress(a.metaId, a.videoId, a.type, a.name, a.poster, pos, dur)
         }
+        if (p.isPlaying) Frames.capture(this, playerView.videoSurfaceView as? android.view.SurfaceView, a.metaId)
         if (isTv) {
             val app = applicationContext
             lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -1312,6 +1321,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
 
     override fun onPause() {
         super.onPause()
+        if (player?.isPlaying == true || (player?.currentPosition ?: 0) > 30_000) Frames.capture(this, playerView.videoSurfaceView as? android.view.SurfaceView, args.metaId, force = true)
         saveNow()
         if (!isInPictureInPictureMode) player?.pause()
     }
@@ -1354,6 +1364,53 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
 
     // ---------- overlay UI ----------
 
+    /** The episode before this one, when it has a summary worth showing while this one starts. */
+    private fun previousEpisode(): com.fivebroz.android.data.Episode? {
+        if (args.type != "series") return null
+        val i = allEpisodes.indexOfFirst { it.id == args.videoId }
+        if (i <= 0) return null
+        return allEpisodes[i - 1].takeIf { !it.overview.isNullOrBlank() && it.overview!!.length > 40 }
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun PauseScreen() {
+        val d = pageDetail
+        val ep = allEpisodes.firstOrNull { it.id == args.videoId }
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.88f), 0.6f to Color.Black.copy(alpha = 0.55f), 1f to Color.Black.copy(alpha = 0.2f)),
+            ),
+        ) {
+            Column(
+                Modifier.align(Alignment.CenterStart).padding(horizontal = if (isTv) 72.dp else 36.dp).widthIn(max = 560.dp),
+            ) {
+                Text("متوقّف مؤقتاً", color = C.Paper.copy(alpha = 0.6f), style = MaterialTheme.typography.labelLarge)
+                VSpace(12.dp)
+                com.fivebroz.android.ui.TitleArt(args.name, logo, if (isTv) 96.dp else 70.dp, 340.dp, MaterialTheme.typography.headlineMedium)
+                if (ep != null) {
+                    VSpace(10.dp)
+                    Text(
+                        "الموسم ${ep.season} · الحلقة ${ep.episode}" + if (ep.title.isNotBlank()) " — ${ep.title}" else "",
+                        style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                } else if (args.label.isNotBlank()) {
+                    VSpace(10.dp)
+                    Text(args.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                val about = ep?.overview?.takeIf { it.isNotBlank() } ?: d?.base?.description
+                about?.let {
+                    VSpace(12.dp)
+                    Text(it, color = C.Paper.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyLarge, maxLines = 5, overflow = TextOverflow.Ellipsis)
+                }
+                val cast = d?.people?.take(4)?.map { it.name }?.ifEmpty { null } ?: d?.cast?.take(4)
+                if (!cast.isNullOrEmpty()) {
+                    VSpace(14.dp)
+                    Text("بطولة: " + cast.joinToString("، "), color = C.Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+
     @androidx.compose.runtime.Composable
     private fun OverlayUi() {
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
@@ -1362,6 +1419,28 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                     val title = if (args.label.isNotBlank()) "${args.name} — ${args.label}" else args.name
                     // In picture-in-picture only the picture (and its subtitles) shows.
                     if (ui.inPip) return@Box
+                    // Paused for a while with the controls gone: what you're watching, like Netflix.
+                    var pausedLong by remember { mutableStateOf(false) }
+                    val resting = overlay is Overlay.None && !ui.playing && !ui.buffering && ui.position > 0 && partyId == null &&
+                        !ui.subsOpen && !ui.speedOpen && !ui.moreOpen && !ui.episodesOpen && !ui.chatOpen
+                    LaunchedEffect(resting, ui.visible) {
+                        if (!resting) { pausedLong = false; return@LaunchedEffect }
+                        if (ui.visible) {
+                            // a touch brought the controls back: give them 5 s, then the pause screen returns
+                            pausedLong = false
+                            delay(5_000)
+                            pausedLong = true
+                            ui.visible = false
+                        } else if (!pausedLong) {
+                            delay(5_000)
+                            pausedLong = true
+                        }
+                    }
+                    androidx.compose.animation.AnimatedVisibility(
+                        pausedLong && !ui.visible,
+                        enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(700)),
+                        exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200)),
+                    ) { PauseScreen() }
                     if (overlay is Overlay.None) PlayerControls(ui, title, isTv, this@PlayerActivity)
                     if (overlay !is Overlay.None) {
                         Box(
@@ -1388,6 +1467,21 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                                 if (args.label.isNotBlank()) {
                                     VSpace(8.dp)
                                     Text(args.label, color = C.Paper.copy(alpha = 0.85f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                previousEpisode()?.let { prev ->
+                                    VSpace(22.dp)
+                                    Column(Modifier.widthIn(max = 520.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("في الحلقة السابقة", color = C.Gold, style = MaterialTheme.typography.labelLarge)
+                                        VSpace(6.dp)
+                                        Text(
+                                            prev.overview.orEmpty(),
+                                            color = C.Paper.copy(alpha = 0.78f),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            maxLines = 4,
+                                            overflow = TextOverflow.Ellipsis,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        )
+                                    }
                                 }
                                 VSpace(26.dp)
                                 androidx.compose.material3.LinearProgressIndicator(

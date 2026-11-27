@@ -71,6 +71,8 @@ object Icons {
     val More = line("more", "M5 12h.01", "M12 12h.01", "M19 12h.01")
     val Star = line("star", "M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z")
     val Episodes = line("episodes", "M3 5h18", "M3 12h18", "M3 19h12")
+    val Sound = line("sound", "M11 5 6 9H2v6h4l5 4V5z", "M15.54 8.46a5 5 0 0 1 0 7.07", "M19.07 4.93a10 10 0 0 1 0 14.14")
+    val Mute = line("mute", "M11 5 6 9H2v6h4l5 4V5z", "M23 9l-6 6", "M17 9l6 6")
     val Info = line("info", "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "M12 16v-4", "M12 8h.01")
 
     // player
