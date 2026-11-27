@@ -113,7 +113,6 @@ fun Focusable(
     Box(
         modifier
             .scale(s)
-            .then(if (showRing) Modifier.shadow(22.dp, shape, ambientColor = Color.White.copy(alpha = 0.5f), spotColor = Color.White.copy(alpha = 0.5f)) else Modifier)
             .then(fr)
             .onFocusChanged {
                 // a soft tick as the remote moves (follows the TV's own sound setting)
@@ -122,7 +121,8 @@ fun Focusable(
                 if (it.isFocused) onFocus?.invoke()
             }
             .clip(shape)
-            .border(if (showRing) 2.dp else 0.dp, if (showRing) C.Paper else Color.Transparent, shape)
+            // a crisp white edge on focus (no glow: a soft shadow is costly to redraw on TVs)
+            .border(if (showRing) 3.dp else 0.dp, if (showRing) C.Paper else Color.Transparent, shape)
             .then(
                 if (onLongClick == null) {
                     Modifier.clickable(source, indication = null) {

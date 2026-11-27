@@ -695,7 +695,7 @@ private fun TvDetail(
     val ambient = rememberAmbient(d.base.background ?: d.base.poster)
     val artKey = remember { Shared.fresh() }
     Box(Modifier.fillMaxSize().background(ambient)) {
-        Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().sharedArt(artKey).kenBurns())
+        Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().sharedArt(artKey))
         TrailerBackground(d.trailer, Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to C.Ink950.copy(alpha = 0.2f), 0.5f to C.Ink950.copy(alpha = 0.7f), 1f to C.Ink950)))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to C.Ink950)))

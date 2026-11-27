@@ -472,22 +472,20 @@ private fun TvHome(
     }
 
     val tvGlow = rememberAmbient(shown?.background ?: shown?.poster)
-    Box(Modifier.fillMaxSize()) {
-        Crossfade(shown, animationSpec = tween(500), label = "bg") { p ->
-            Box(Modifier.fillMaxSize()) {
-                if (p != null) Img((p.background ?: p.poster)?.replace("/w780/", "/w1280/"), Modifier.fillMaxSize().kenBurns())
+    // Like the best TV apps (Nuvio, Apple TV): the picture fills the top corner opposite the text
+    // and melts into a solid page. The words sit on plain dark (easy to read), and far less is
+    // redrawn as the remote moves — the full-screen moving backdrop was the heaviest thing here.
+    Box(Modifier.fillMaxSize().background(tvGlow)) {
+        Box(Modifier.align(Alignment.TopEnd).fillMaxWidth(0.66f).fillMaxHeight(0.64f)) {
+            Crossfade(shown, animationSpec = tween(400), label = "bg") { p ->
+                Box(Modifier.fillMaxSize()) {
+                    if (p != null) Img((p.background ?: p.poster)?.replace("/w780/", "/w1280/"), Modifier.fillMaxSize())
+                }
             }
+            // fade toward the text side (the right, in Arabic) and toward the rows below
+            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color.Transparent, 0.55f to Color.Transparent, 1f to tvGlow)))
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Transparent, 0.55f to Color.Transparent, 1f to tvGlow)))
         }
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(0f to C.Ink950.copy(alpha = 0.15f), 0.45f to C.Ink950.copy(alpha = 0.55f), 1f to C.Ink950),
-            ),
-        )
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(0f to Color.Transparent, 0.35f to tvGlow.copy(alpha = 0.25f), 0.62f to tvGlow.copy(alpha = 0.92f), 1f to C.Ink950),
-            ),
-        )
 
         Column(Modifier.fillMaxSize()) {
             // Info for the focused title.
