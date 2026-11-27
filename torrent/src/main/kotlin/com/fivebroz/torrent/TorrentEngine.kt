@@ -205,8 +205,9 @@ class TorrentEngine(private val workDir: File) {
         // Video containers keep their index at the start and often at the end:
         // fetch both first so the player can start and seek immediately.
         for (i in 0 until 4) if (first + i <= last) th.setPieceDeadline(first + i, 300 * i)
-        th.setPieceDeadline(last, 500)
-        if (last - 1 > first) th.setPieceDeadline(last - 1, 600)
+        // MKV/MP4 indexes at the end are needed before the first frame: ask for them right away.
+        th.setPieceDeadline(last, 0)
+        if (last - 1 > first) th.setPieceDeadline(last - 1, 150)
         sl.idx = idx
         sl.first = first
         sl.last = last
