@@ -106,11 +106,20 @@ fun HomeScreen(onOpen: (Preview) -> Unit, onProfile: () -> Unit) {
     LaunchedEffect(attempt, ItemEvents.libraryVersion) {
         if (!kids) addonRows = Api.traktRows() + Api.addonRows()
     }
+    // "Because you watched …": titles like the ones this profile is in the middle of.
+    var personal by remember { mutableStateOf<List<com.fivebroz.android.data.Row>>(emptyList()) }
+    LaunchedEffect(resume.map { it.item.id }.take(2)) {
+        if (kids) return@LaunchedEffect
+        personal = resume.distinctBy { it.item.id }.take(2).mapNotNull { r ->
+            val d = runCatching { Api.detail(r.item.type, r.item.id) }.getOrNull() ?: return@mapNotNull null
+            d.related.takeIf { it.size >= 4 }?.let { com.fivebroz.android.data.Row("لأنك شاهدت ${d.base.name}", it) }
+        }
+    }
     val shown = home?.let { h ->
         // The person's own row order and hidden rows (Settings → الرئيسية).
         val hidden = Prefs.hiddenRows
         val order = Prefs.rowOrder
-        val rows = (h.rows + addonRows).filter { it.title !in hidden }
+        val rows = (personal + h.rows + addonRows).filter { it.title !in hidden }
             .sortedBy { r -> order.indexOf(r.title).let { if (it < 0) Int.MAX_VALUE else it } }
         h.copy(rows = rows)
     }
@@ -178,13 +187,18 @@ private fun PhoneHome(
                 if (home.top10.isNotEmpty()) item("top10") {
                     PosterRow(top10Title(kids, family), home.top10, onOpen, g, ranked = true)
                 }
+                if (home.genres.isNotEmpty()) item("genres") { GenreRow(home.genres, g) { LocalGenreNav.value?.invoke(it) } }
                 home.rows.forEachIndexed { i, row ->
-                    item("row$i") { PosterRow(row.title, row.items, onOpen, g) }
+                    item("row$i") { PosterRow(row.title, row.items, onOpen, g, wide = row.style == "wide") }
                 }
-                item("end") { VSpace(28.dp) }
+                item("end") { VSpace(if (LocalIsTablet.current) 28.dp else BottomBarSpace) }
             }
         }
         PhoneHeader(solid, onProfile)
+        if (home != null) OneTimeTip(
+            "longpress", "اضغط مطوّلاً على أي بوستر لخيارات سريعة: قائمتي، شاهدته، اقترح لليلة.",
+            Modifier.align(Alignment.BottomCenter).padding(bottom = BottomBarSpace + 8.dp, start = 16.dp, end = 16.dp),
+        )
     }
 }
 
@@ -330,6 +344,11 @@ private fun ContinueRow(resume: List<ResumeItem>, g: Dp, onFocusItem: ((Preview)
     }
 }
 
+/** Opens a genre page (set by the navigation host). */
+object LocalGenreNav {
+    var value: ((com.fivebroz.android.data.GenreTile) -> Unit)? = null
+}
+
 /** Row titles of the last home page, for Settings → الرئيسية. */
 var lastRowTitles: List<String> = emptyList()
 
@@ -472,7 +491,13 @@ private fun TvHome(
                         val fr = claim()
                         item("row$i") {
                             CompositionLocalProvider(LocalBringIntoViewSpec provides defaultSpec) {
-                                TvPosterRow(row.title, row.items, onOpen, g, fr) { focused = it }
+                                if (row.style == "wide") TvWideRow(row.title, row.items, emptyList(), onOpen, g, fr) { focused = it }
+                                else TvPosterRow(row.title, row.items, onOpen, g, fr) { focused = it }
+                            }
+                        }
+                        if (i == 1 && home.genres.isNotEmpty()) item("genres") {
+                            CompositionLocalProvider(LocalBringIntoViewSpec provides defaultSpec) {
+                                GenreRow(home.genres, g) { LocalGenreNav.value?.invoke(it) }
                             }
                         }
                     }

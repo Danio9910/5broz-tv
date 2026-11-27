@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +48,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
+import androidx.compose.runtime.staticCompositionLocalOf
+import com.fivebroz.android.data.Prefs
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
@@ -229,10 +233,11 @@ fun Poster(
     onFocus: (() -> Unit)? = null,
 ) {
     val menu = LocalItemMenu.current
+    val inst = remember { java.util.UUID.randomUUID().toString() }
     Focusable(
-        onClick,
-        Modifier.width(width).aspectRatio(2f / 3f),
-        RoundedCornerShape(8.dp),
+        { Shared.opened = inst; Shared.openedAt = System.currentTimeMillis(); onClick() },
+        Modifier.width(width).aspectRatio(2f / 3f).sharedArt(inst.takeIf { Shared.opened == it }),
+        RoundedCornerShape(if (Prefs.profileKids) 14.dp else 8.dp),
         onFocus = onFocus,
         onLongClick = menu?.let { m -> { m(item) } },
     ) {
@@ -248,7 +253,51 @@ fun Poster(
                 )
             }
             if (progress != null && progress > 0f) ProgressLine(progress, Modifier.align(Alignment.BottomCenter))
+            item.badge?.let { Badge(it, Modifier.align(Alignment.TopStart)) }
         }
+    }
+}
+
+/** A small label in a card's corner: "جديد", "حلقة جديدة", "قريباً". */
+@Composable
+fun Badge(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        modifier.padding(6.dp).background(if (text == "قريباً") C.Ink950.copy(alpha = 0.8f) else C.Gold, RoundedCornerShape(5.dp))
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+        color = if (text == "قريباً") C.Paper else C.Ink950,
+        style = MaterialTheme.typography.labelMedium.copy(fontSize = 10.sp),
+    )
+}
+
+// ---------- poster → page motion (shared element) ----------
+
+/** Which card was just opened, so its picture can grow into the title page. */
+object Shared {
+    var opened by androidx.compose.runtime.mutableStateOf<String?>(null)
+    var openedAt = 0L
+
+    /** The key for the page that's opening now (only right after a card was tapped). */
+    fun fresh(): String? = opened.takeIf { System.currentTimeMillis() - openedAt < 1500 }
+}
+
+@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+val LocalSharedScope = staticCompositionLocalOf<androidx.compose.animation.SharedTransitionScope?> { null }
+val LocalNavAnimScope = staticCompositionLocalOf<androidx.compose.animation.AnimatedVisibilityScope?> { null }
+
+/** Marks a picture as the one that morphs between a card and the title page. */
+@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+@Composable
+fun Modifier.sharedArt(key: String?): Modifier {
+    val shared = LocalSharedScope.current ?: return this
+    val anim = LocalNavAnimScope.current ?: return this
+    if (key == null) return this
+    return with(shared) {
+        this@sharedArt.sharedBounds(
+            rememberSharedContentState("art-$key"),
+            animatedVisibilityScope = anim,
+            resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.RemeasureToBounds,
+        )
     }
 }
 
@@ -270,12 +319,15 @@ fun WideCard(
     onFocus: (() -> Unit)? = null,
 ) {
     val menu = LocalItemMenu.current
+    val inst = remember { java.util.UUID.randomUUID().toString() }
     Column(Modifier.width(width)) {
         Focusable(
-            onClick, Modifier.fillMaxWidth().aspectRatio(16f / 9f), RoundedCornerShape(8.dp), onFocus = onFocus,
+            { Shared.opened = inst; Shared.openedAt = System.currentTimeMillis(); onClick() }, Modifier.fillMaxWidth().aspectRatio(16f / 9f).sharedArt(inst.takeIf { Shared.opened == it }),
+            RoundedCornerShape(8.dp), onFocus = onFocus,
             onLongClick = menu?.let { m -> { m(item) } },
         ) {
             Box(Modifier.fillMaxSize().background(C.Ink800)) {
+                item.badge?.let { Badge(it, Modifier.align(Alignment.TopStart).zIndex(1f)) }
                 Img(item.background ?: item.poster, Modifier.fillMaxSize(), item.name)
                 Box(
                     Modifier.fillMaxSize().background(
@@ -331,7 +383,7 @@ fun posterWidth(): Dp = when {
     LocalIsTv.current -> 128.dp
     LocalIsTablet.current -> 138.dp
     else -> 108.dp
-}
+} * (if (Prefs.profileKids) 1.22f else 1f) // kids get bigger, easier cards
 
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
@@ -347,6 +399,7 @@ fun PosterRow(
     ranked: Boolean = false,
     progress: ((Int) -> Float?)? = null,
     onFocusItem: ((Preview) -> Unit)? = null,
+    wide: Boolean = false, // landscape cards (e.g. new episodes)
 ) {
     if (items.isEmpty()) return
     val w = posterWidth()
@@ -359,7 +412,7 @@ fun PosterRow(
             itemsIndexed(items, key = { i, it -> "${it.id}#$i" }) { i, it ->
                 val focus = onFocusItem?.let { f -> { f(it) } }
                 if (ranked) RankedPoster(i + 1, it, w, { onOpen(it) }, focus)
-                else if (com.fivebroz.android.data.Prefs.cardStyle == "wide") WideCard(it, w * 1.9f, { onOpen(it) }, progress = progress?.invoke(i), onFocus = focus)
+                else if (wide || com.fivebroz.android.data.Prefs.cardStyle == "wide") WideCard(it, w * 1.9f, { onOpen(it) }, progress = progress?.invoke(i), onFocus = focus)
                 else Poster(it, w, onClick = { onOpen(it) }, progress = progress?.invoke(i), onFocus = focus)
             }
         }
@@ -509,4 +562,50 @@ fun rememberAmbient(url: String?): Color {
     }
     val animated by androidx.compose.animation.animateColorAsState(c, tween(700), label = "amb")
     return animated
+}
+
+/** "Browse by genre": picture tiles, one per mood. */
+@Composable
+fun GenreRow(genres: List<com.fivebroz.android.data.GenreTile>, gutter: Dp, onGenre: (com.fivebroz.android.data.GenreTile) -> Unit) {
+    if (genres.isEmpty()) return
+    val tv = LocalIsTv.current
+    val w = if (tv) 230.dp else 168.dp
+    Column(Modifier.fillMaxWidth().padding(bottom = if (tv) 18.dp else 22.dp)) {
+        SectionTitle("تصفّح حسب النوع", Modifier.padding(horizontal = gutter, vertical = 6.dp))
+        LazyRow(contentPadding = PaddingValues(horizontal = gutter, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(genres.size) { i ->
+                val g = genres[i]
+                Focusable({ onGenre(g) }, Modifier.width(w).aspectRatio(16f / 9f), RoundedCornerShape(10.dp)) {
+                    Box(Modifier.fillMaxSize().background(C.Ink800)) {
+                        Img(g.image, Modifier.fillMaxSize())
+                        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.15f), 1f to Color.Black.copy(alpha = 0.75f))))
+                        Text(g.name, Modifier.align(Alignment.BottomStart).padding(12.dp), style = MaterialTheme.typography.titleMedium, color = C.Paper)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A hint shown once ("hold for 2×"), dismissed with a tap. */
+@Composable
+fun OneTimeTip(key: String, text: String, modifier: Modifier = Modifier) {
+    var show by remember { mutableStateOf(!Prefs.tipSeen(key)) }
+    if (!show) return
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(9000)
+        Prefs.setTipSeen(key)
+        show = false
+    }
+    Focusable({ Prefs.setTipSeen(key); show = false }, modifier, RoundedCornerShape(14.dp), lift = 1f, ring = false) {
+        Row(
+            Modifier.background(C.Paper).padding(horizontal = 14.dp, vertical = 10.dp).widthIn(max = 340.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Ic(Icons.Info, 18.dp, C.Ink950)
+            Text(text, color = C.Ink950, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f, fill = false))
+            Text("حسناً", color = C.Ink950, style = MaterialTheme.typography.labelLarge)
+        }
+    }
 }

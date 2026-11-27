@@ -113,9 +113,14 @@ object Prefs {
         get() = sp.getBoolean(k("night"), false)
         set(v) = sp.edit().putBoolean(k("night"), v).apply()
 
+    /** One-time hints ("hold for 2×"…) shown once per device. */
+    fun tipSeen(key: String) = sp.getBoolean("tip.$key", false)
+    fun setTipSeen(key: String) = sp.edit().putBoolean("tip.$key", true).apply()
+
     // ---- look & behaviour (Settings) ----
+    /** -1 = the profile's default (gold; warm amber for kids). */
     var accent: Int
-        get() = sp.getInt(k("accent"), 0)
+        get() = sp.getInt(k("accent"), -1)
         set(v) = sp.edit().putInt(k("accent"), v).apply()
     var amoled: Boolean
         get() = sp.getBoolean(k("amoled"), false)

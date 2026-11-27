@@ -197,6 +197,9 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
         }
 
         ui.gesture?.let { (icon, level) -> GestureHud(icon, level) }
+        if (!isTv && ui.visible) {
+            com.fivebroz.android.ui.OneTimeTip("hold2x", "اضغط مطوّلاً على الفيديو لتسريعه 2×، واسحب يميناً أو يساراً للصوت والإضاءة.", Modifier.align(Alignment.TopCenter).padding(top = 76.dp))
+        }
         if (ui.held2x) {
             Text(
                 "2× ▶▶",

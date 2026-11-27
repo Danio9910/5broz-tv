@@ -32,7 +32,8 @@ object Look {
     var amoled by androidx.compose.runtime.mutableStateOf(false)
 
     fun load() {
-        accent = accents.getOrNull(com.fivebroz.android.data.Prefs.accent)?.second ?: accents[0].second
+        val i = com.fivebroz.android.data.Prefs.accent.let { if (it < 0) (if (com.fivebroz.android.data.Prefs.profileKids) 6 else 0) else it }
+        accent = accents.getOrNull(i)?.second ?: accents[0].second
         amoled = com.fivebroz.android.data.Prefs.amoled
     }
 }

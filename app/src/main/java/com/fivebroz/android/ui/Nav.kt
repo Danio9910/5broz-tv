@@ -35,6 +35,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import com.fivebroz.android.data.Api
 import androidx.compose.ui.focus.onFocusChanged
@@ -70,6 +74,11 @@ fun AppNav() {
         Prefs.profileId == null -> "profiles"
         else -> "main"
     }
+    // Genre tiles on the home page open their own page.
+    LocalGenreNav.value = { g -> nav.navigate("genre/${enc(g.id)}/${enc(g.name)}") }
+    @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+    androidx.compose.animation.SharedTransitionLayout {
+    CompositionLocalProvider(LocalSharedScope provides this) {
     NavHost(
         nav,
         startDestination = start,
@@ -90,6 +99,7 @@ fun AppNav() {
             })
         }
         composable("main") {
+            CompositionLocalProvider(LocalNavAnimScope provides this) {
             ItemMenuHost({ nav.openTitle(it) }) {
             MainScreen(
                 onOpen = { nav.openTitle(it) },
@@ -99,6 +109,7 @@ fun AppNav() {
                 },
             )
             }
+            }
         }
         composable(
             "title/{type}/{id}",
@@ -106,11 +117,13 @@ fun AppNav() {
         ) { e ->
             val type = e.arguments?.getString("type") ?: "movie"
             val id = dec(e.arguments?.getString("id") ?: "")
+            CompositionLocalProvider(LocalNavAnimScope provides this) {
             ItemMenuHost({ nav.openTitle(it) }) {
                 DetailScreen(
                     type = type, id = id, onOpen = { nav.openTitle(it) }, onBack = { nav.popBackStack() },
                     onPerson = { nav.navigate("person/${enc(it)}") },
                 )
+            }
             }
         }
         composable("person/{id}") { e ->
@@ -118,6 +131,15 @@ fun AppNav() {
                 PersonScreen(dec(e.arguments?.getString("id") ?: ""), onOpen = { nav.openTitle(it) }, onBack = { nav.popBackStack() })
             }
         }
+        composable("genre/{id}/{name}") { e ->
+            CompositionLocalProvider(LocalNavAnimScope provides this) {
+                ItemMenuHost({ nav.openTitle(it) }) {
+                    GenreScreen(dec(e.arguments?.getString("id") ?: ""), dec(e.arguments?.getString("name") ?: ""), onOpen = { nav.openTitle(it) }, onBack = { nav.popBackStack() })
+                }
+            }
+        }
+    }
+    }
     }
 }
 
@@ -138,6 +160,36 @@ fun gutter(): Dp = when {
 
 private val RAIL = 80.dp
 
+/** Room left at the bottom of phone pages for the floating bar. */
+val BottomBarSpace = 96.dp
+
+/** Tablet side rail: the four destinations and the profile. */
+@Composable
+private fun TabletRail(tab: Tab, onTab: (Tab) -> Unit, onProfile: () -> Unit) {
+    Column(
+        Modifier.fillMaxHeight().width(88.dp).background(C.Ink900).statusBarsPadding().navigationBarsPadding().padding(vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("5", fontFamily = Cormorant, fontWeight = FontWeight.SemiBold, fontSize = 30.sp, color = C.Gold)
+        Spacer(Modifier.height(16.dp))
+        Tab.entries.forEach { t ->
+            val on = t == tab
+            Focusable({ onTab(t) }, shape = RoundedCornerShape(16.dp), lift = 1f, ring = false) { f ->
+                Column(
+                    Modifier.width(72.dp).background(if (on) C.Paper.copy(alpha = 0.12f) else if (f) C.Ink700 else Color.Transparent).padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(t.icon, t.label, Modifier.size(24.dp), tint = if (on) C.Paper else C.Muted)
+                    Text(t.label, fontSize = 11.sp, color = if (on) C.Paper else C.Muted, fontFamily = Cairo)
+                }
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Focusable(onProfile, shape = CircleShape, lift = 1.05f, ring = false) { Avatar(Prefs.current(), 40.dp) }
+    }
+}
+
 @Composable
 private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
     val isTv = LocalIsTv.current
@@ -147,6 +199,7 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
     var join by remember { mutableStateOf(false) }
     var addons by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
+    var tvMenu by remember { mutableStateOf(false) }
     // Back from another tab returns home first, like every streaming app.
     androidx.activity.compose.BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
 
@@ -190,18 +243,42 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
             Box(Modifier.fillMaxSize().padding(start = RAIL)) {
                 AnimatedContent(tab, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) }, label = "tab") { pages(it) }
             }
-            TvRail(tab, { tab = it }, switchProfile)
+            TvRail(tab, { tab = it }) { tvMenu = true }
+            if (tvMenu) {
+                ActionSheet(
+                    Prefs.profileName,
+                    buildList {
+                        add(SheetItem(Icons.Party, "تبديل الملف") { switchProfile() })
+                        add(SheetItem(Icons.Edit, "الإعدادات") { settings = true })
+                        if (!Prefs.profileKids) add(SheetItem(Icons.Sources, "الإضافات") { addons = true })
+                        add(SheetItem(Icons.Join, "انضمام لغرفة مشاهدة") { join = true })
+                    },
+                ) { tvMenu = false }
+            }
+            OneTimeTip(
+                "tvmenu", "على أي بوستر: زر القائمة في الريموت (أو ضغطة مطوّلة على OK) يفتح خيارات سريعة.",
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp),
+            )
             if (saving) {
                 val items = remember { Api.cachedHome(Prefs.profileKids || Prefs.profileFamily)?.let { it.heroes + it.top10 + it.rows.flatMap { r -> r.items } } ?: emptyList() }
                 Screensaver(items)
             }
         }
     } else {
-        Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                AnimatedContent(tab, transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(140)) }, label = "tab") { pages(it) }
+        if (LocalIsTablet.current) {
+            // Tablets: a navigation rail on the side instead of a phone's bottom bar.
+            Row(Modifier.fillMaxSize()) {
+                TabletRail(tab, { tab = it }) { menu = true }
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    AnimatedContent(tab, transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(140)) }, label = "tab") { pages(it) }
+                }
             }
-            PhoneBottomBar(tab) { tab = it }
+        } else {
+            // Phones: content runs under a floating, frosted bar.
+            Box(Modifier.fillMaxSize()) {
+                AnimatedContent(tab, transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(140)) }, label = "tab") { pages(it) }
+                Box(Modifier.align(Alignment.BottomCenter)) { PhoneBottomBar(tab) { tab = it } }
+            }
         }
     }
 
@@ -281,33 +358,7 @@ private fun TvRail(tab: Tab, onTab: (Tab) -> Unit, onProfile: () -> Unit) {
             }
         }
         Spacer(Modifier.weight(1f))
-        var join by remember { mutableStateOf(false) }
-        RailItem("انضمام لغرفة", false, open, { join = true }) {
-            Icon(Icons.Join, null, Modifier.size(22.dp), tint = it)
-        }
-        if (join) JoinPartyDialog { join = false }
-        var settings by remember { mutableStateOf(false) }
-        RailItem("الإعدادات", false, open, { settings = true }) {
-            Icon(Icons.Edit, null, Modifier.size(22.dp), tint = it)
-        }
-        if (settings) {
-            androidx.compose.ui.window.Dialog(
-                onDismissRequest = { settings = false },
-                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-            ) { SettingsScreen(onBack = { settings = false }, onAddons = { settings = false }) }
-        }
-        if (!Prefs.profileKids) {
-            var addons by remember { mutableStateOf(false) }
-            RailItem("الإضافات", false, open, { addons = true }) {
-                Icon(Icons.Sources, null, Modifier.size(22.dp), tint = it)
-            }
-            if (addons) {
-                androidx.compose.ui.window.Dialog(
-                    onDismissRequest = { addons = false },
-                    properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-                ) { AddonsScreen { addons = false } }
-            }
-        }
+        // Everything else (switch profile, settings, addons, join a room) is under the profile.
         RailItem(Prefs.profileName, false, open, onProfile) {
             Avatar(Prefs.current(), 26.dp)
         }
@@ -361,13 +412,16 @@ fun PhoneHeader(solid: Float, onProfile: () -> Unit) {
 
 @Composable
 private fun PhoneBottomBar(tab: Tab, onTab: (Tab) -> Unit) {
+    val pill = RoundedCornerShape(30.dp)
     Row(
         Modifier
-            .fillMaxWidth()
-            .background(C.Ink950)
-            .background(Brush.verticalGradient(listOf(C.Paper.copy(alpha = 0.06f), Color.Transparent)), RoundedCornerShape(0.dp))
             .navigationBarsPadding()
-            .height(60.dp),
+            .padding(horizontal = 18.dp, vertical = 10.dp)
+            .fillMaxWidth()
+            .shadow(18.dp, pill, ambientColor = Color.Black, spotColor = Color.Black)
+            .background(C.Ink900.copy(alpha = 0.86f), pill)
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.03f))), pill)
+            .height(62.dp),
         horizontalArrangement = Arrangement.SpaceAround,
         verticalAlignment = Alignment.CenterVertically,
     ) {

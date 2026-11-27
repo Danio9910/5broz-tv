@@ -353,7 +353,8 @@ private fun PhoneDetail(
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to ambient, 0.75f to C.Ink950))) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp)) {
             item("head") {
-                Box(Modifier.fillMaxWidth().height(headH)) {
+                val artKey = remember { Shared.fresh() }
+                Box(Modifier.fillMaxWidth().height(headH).sharedArt(artKey)) {
                     Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().kenBurns())
                     TrailerBackground(d.trailer, Modifier.fillMaxSize())
                     Box(
@@ -572,8 +573,9 @@ private fun TvDetail(
     LaunchedEffect(Unit) { runCatching { playFr.requestFocus() } }
 
     val ambient = rememberAmbient(d.base.background ?: d.base.poster)
+    val artKey = remember { Shared.fresh() }
     Box(Modifier.fillMaxSize().background(ambient)) {
-        Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().kenBurns())
+        Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().sharedArt(artKey).kenBurns())
         TrailerBackground(d.trailer, Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to C.Ink950.copy(alpha = 0.2f), 0.5f to C.Ink950.copy(alpha = 0.7f), 1f to C.Ink950)))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to C.Ink950)))

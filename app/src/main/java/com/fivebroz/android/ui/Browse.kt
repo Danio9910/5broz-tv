@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -47,7 +48,7 @@ private fun PosterGrid(
     LazyVerticalGrid(
         columns = GridCells.Adaptive(w),
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = g, end = g, top = if (LocalIsTv.current) 32.dp else 8.dp, bottom = 40.dp),
+        contentPadding = PaddingValues(start = g, end = g, top = if (LocalIsTv.current) 32.dp else 8.dp, bottom = if (LocalIsTv.current || LocalIsTablet.current) 40.dp else BottomBarSpace),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
@@ -257,7 +258,7 @@ fun TonightScreen(onOpen: (Preview) -> Unit) {
 
     androidx.compose.foundation.lazy.LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = g, end = g, top = if (LocalIsTv.current) 32.dp else 0.dp, bottom = 40.dp),
+        contentPadding = PaddingValues(start = g, end = g, top = if (LocalIsTv.current) 32.dp else 0.dp, bottom = if (LocalIsTv.current || LocalIsTablet.current) 40.dp else BottomBarSpace),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item("title") {
@@ -270,13 +271,29 @@ fun TonightScreen(onOpen: (Preview) -> Unit) {
         val l = list
         when {
             l == null -> items(3) { Skeleton(Modifier.fillMaxWidth().height(96.dp)) }
+            // Empty: offer three popular picks to suggest with one tap.
             l.isEmpty() -> item("empty") {
-                Text(
-                    "لا اقتراحات بعد. افتح أي عنوان واضغط «اقترح لليلة».",
-                    color = C.Muted,
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 30.dp),
-                )
+                var picks by remember { mutableStateOf<List<Preview>>(emptyList()) }
+                LaunchedEffect(Unit) { picks = Api.trending().take(3) }
+                Column(Modifier.padding(top = 18.dp)) {
+                    Text("لا اقتراحات بعد. ابدأوا بواحد من هذه:", color = C.Muted, style = MaterialTheme.typography.bodyLarge)
+                    VSpace(12.dp)
+                    picks.forEach { p ->
+                        androidx.compose.foundation.layout.Row(
+                            Modifier.fillMaxWidth().padding(vertical = 5.dp)
+                                .background(C.Ink900, androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(10.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Img(p.poster, Modifier.width(54.dp).height(80.dp).background(C.Ink800))
+                            Column(Modifier.weight(1f)) {
+                                Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                                p.year?.let { Text(it, color = C.Muted, style = MaterialTheme.typography.labelMedium) }
+                            }
+                            GoldButton("اقترح", { scope.launch { Db.suggest(p); tick++ } }, filled = false, icon = Icons.Tonight)
+                        }
+                    }
+                }
             }
             else -> items(l.size, key = { l[it].id }) { i ->
                 val s = l[i]
@@ -323,6 +340,31 @@ fun TonightScreen(onOpen: (Preview) -> Unit) {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** All the films of one genre (from a home-page genre tile). */
+@Composable
+fun GenreScreen(id: String, name: String, onOpen: (Preview) -> Unit, onBack: () -> Unit) {
+    var items by remember { mutableStateOf<List<Preview>?>(null) }
+    LaunchedEffect(id) {
+        val films = Api.genre(id, "movie")
+        val shows = Api.genre(id, "series")
+        val mixed = ArrayList<Preview>()
+        for (i in 0 until maxOf(films.size, shows.size)) {
+            films.getOrNull(i)?.let(mixed::add)
+            shows.getOrNull(i)?.let(mixed::add)
+        }
+        items = mixed
+    }
+    val list = items
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(C.Ink950)) {
+        if (list == null) Centered("…") else PosterGrid(list, onOpen, header = { PageTitle(name) })
+        if (!LocalIsTv.current) {
+            Focusable(onBack, Modifier.statusBarsPadding().padding(12.dp), shape = androidx.compose.foundation.shape.CircleShape, lift = 1f, ring = false) {
+                androidx.compose.foundation.layout.Box(Modifier.padding(8.dp)) { Ic(Icons.Back, 20.dp) }
             }
         }
     }

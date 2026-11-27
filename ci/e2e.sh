@@ -109,6 +109,7 @@ tap_text "السرعة"
 sleep 2; shot 6d-speed
 tap_text "1.5×"; sleep 1
 sleep 1; shot 6e-speed-set
+tap_text "المزيد"; sleep 2; shot 6b0-more
 tap_text "غرفة مشاهدة"
 sleep 8; shot 6b-party
 adb shell input keyevent 4; sleep 2

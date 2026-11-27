@@ -15,6 +15,7 @@ data class Preview(
     val year: String? = null,
     val rating: String? = null,
     val logo: String? = null, // the title's own artwork (wordmark)
+    val badge: String? = null, // "جديد", "حلقة جديدة", "قريباً"
 )
 
 data class Episode(
@@ -47,12 +48,16 @@ data class Detail(
 
 data class CastMember(val id: String, val name: String, val character: String?, val photo: String?)
 
-data class Row(val title: String, val items: List<Preview>)
+data class Row(val title: String, val items: List<Preview>, val style: String? = null)
+
+/** A genre tile on the home page (artwork from a popular title in it). */
+data class GenreTile(val id: String, val name: String, val image: String?)
 
 data class Home(
     val heroes: List<Preview>,
     val top10: List<Preview>,
     val rows: List<Row>,
+    val genres: List<GenreTile> = emptyList(),
 )
 
 data class Stream(
@@ -95,6 +100,7 @@ private fun parsePreview(o: JSONObject): Preview? {
         year = o.str("releaseInfo"),
         rating = o.str("imdbRating"),
         logo = o.str("logo"),
+        badge = o.str("badge"),
     )
 }
 
@@ -132,8 +138,9 @@ object Api {
             top10 = o.optJSONArray("top10").mapObjects(::parsePreview),
             rows = o.optJSONArray("rows").mapObjects { r ->
                 val items = r.optJSONArray("items").mapObjects(::parsePreview)
-                if (items.isEmpty()) null else Row(r.str("title") ?: "", items)
+                if (items.isEmpty()) null else Row(r.str("title") ?: "", items, r.str("style"))
             },
+            genres = o.optJSONArray("genres").mapObjects { g -> GenreTile(g.str("id") ?: return@mapObjects null, g.str("name") ?: "", g.str("image")) },
         )
     }
 
