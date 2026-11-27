@@ -262,6 +262,8 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
         val now = !saved
         saved = now
         scope.launch { Db.setInLibrary(d.base, now) }
+        // Following a series: that's when new-episode notices become worth asking for.
+        if (now && d.base.type == "series") com.fivebroz.android.Notify.askWhenUseful(ctx)
         Unit
     }
     val openSources = { if (mainVideo != null) sourcesFor = mainVideo to mainLabel }

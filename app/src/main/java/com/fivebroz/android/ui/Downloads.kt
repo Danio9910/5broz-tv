@@ -122,5 +122,6 @@ private fun size(b: Long): String = when {
 
 /** Starts keeping a film or episode on the device (asks nothing: picks a phone-sized copy). */
 fun downloadForOffline(ctx: android.content.Context, type: String, metaId: String, name: String, poster: String?, videoId: String, label: String) {
+    com.fivebroz.android.Notify.askWhenUseful(ctx)
     DownloadService.enqueue(ctx, OfflineItem(videoId = videoId, metaId = metaId, type = type, name = name, label = label, poster = poster, status = "waiting"))
 }

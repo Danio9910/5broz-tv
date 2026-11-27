@@ -75,6 +75,20 @@ class NewEpisodesWorker(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx
 object Notify {
     private const val CHANNEL = "episodes"
 
+    /**
+     * Ask for notification permission at the moment it makes sense (following a series,
+     * starting a download) — never on first launch. Android 13+ only, once.
+     */
+    fun askWhenUseful(ctx: Context) {
+        if (Build.VERSION.SDK_INT < 33) return
+        val a = ctx as? android.app.Activity ?: return
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        val sp = ctx.getSharedPreferences("5broz", Context.MODE_PRIVATE)
+        if (sp.getBoolean("asked_notif", false)) return
+        sp.edit().putBoolean("asked_notif", true).apply()
+        a.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 41)
+    }
+
     fun ensureChannel(ctx: Context) {
         if (Build.VERSION.SDK_INT >= 26) {
             val nm = ctx.getSystemService(NotificationManager::class.java)

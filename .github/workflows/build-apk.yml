@@ -114,6 +114,8 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: ${{ matrix.device }}
+          ram-size: 4096M
+          heap-size: 512M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: OUT=e2e-${{ matrix.device }} timeout 2400 ./ci/e2e.sh || true

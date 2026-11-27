@@ -42,7 +42,6 @@ class MainActivity : ComponentActivity() {
         // Daily check for new episodes of followed series; refresh the home-screen widget.
         NewEpisodesWorker.schedule(this)
         ContinueWidget.refresh(this)
-        askNotificationsOnce()
         // A title link (TV home screen) only opens for a device that's already set up.
         takeRemoteLink(intent)
         if (intent?.data != null && (!Prefs.gatePassed || Prefs.profileId == null)) intent = intent.setData(null)
@@ -91,13 +90,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Phones on Android 13+: ask once, so new-episode and download notices can show. */
-    private fun askNotificationsOnce() {
-        if (android.os.Build.VERSION.SDK_INT < 33) return
-        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)) return
-        val sp = getSharedPreferences("5broz", MODE_PRIVATE)
-        if (sp.getBoolean("asked_notif", false) || Prefs.profileId == null) return
-        sp.edit().putBoolean("asked_notif", true).apply()
-        requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 41)
-    }
 }
