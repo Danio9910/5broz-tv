@@ -70,6 +70,7 @@ import com.fivebroz.android.data.Stream
 import com.fivebroz.android.data.Subtitle
 import com.fivebroz.torrent.TorrentEngine
 import com.fivebroz.android.ui.C
+import com.fivebroz.android.ui.kenBurns
 import com.fivebroz.android.ui.FiveBrozTheme
 import com.fivebroz.android.ui.GoldButton
 import com.fivebroz.android.ui.VSpace
@@ -252,6 +253,11 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                         }
                     }
                     // Credits rolling with another episode queued: offer it now, like Netflix.
+                    if (seg != null && ui.marks.isEmpty() && ui.duration > 0) {
+                        val d = ui.duration / 1000.0
+                        ui.marks = listOfNotNull(seg.recap, seg.intro, seg.outro)
+                            .map { (it.start / d).toFloat().coerceIn(0f, 1f) to (it.end / d).toFloat().coerceIn(0f, 1f) }
+                    }
                     val outro = seg?.outro
                     if (outro != null && !outroShown && args.queueIds.isNotEmpty() && overlay is Overlay.None && partyId == null &&
                         t >= outro.start && ui.duration > 0 && t < ui.duration / 1000.0 - 5
@@ -350,6 +356,28 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             intro != null -> { introSkipped = true; seekTo((intro.end * 1000).toLong()) }
             else -> { introSkipped = true; seekTo(p.currentPosition + 85_000) }
         }
+    }
+
+    // ---- page data (loading screen, episode picker) ----
+    private var backdrop by mutableStateOf<String?>(null)
+    private var logo by mutableStateOf<String?>(null)
+    private var allEpisodes by mutableStateOf<List<com.fivebroz.android.data.Episode>>(emptyList())
+
+    override val episodes get() = allEpisodes
+    override val currentVideoId get() = args.videoId
+
+    override fun playEpisode(e: com.fivebroz.android.data.Episode) {
+        saveNow()
+        val after = allEpisodes.dropWhile { it.id != e.id }.drop(1).take(30)
+        args = args.copy(
+            videoId = e.id,
+            label = com.fivebroz.android.ui.epLabel(e),
+            streamUrl = null,
+            queueIds = ArrayList(after.map { it.id }),
+            queueLabels = ArrayList(after.map { com.fivebroz.android.ui.epLabel(it) }),
+        )
+        autoStreak = 0
+        begin()
     }
 
     // ---- intro / recap / credits (IntroDB) and binge behaviour ----
@@ -898,6 +926,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         subOffset = com.fivebroz.android.data.Prefs.subDelay(args.videoId)
         syncedFor = null
         segments = null
+        ui.marks = emptyList()
         introSkipped = false
         recapSkipped = false
         outroShown = false
@@ -939,11 +968,15 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             }
             playNextGroup(resumeAsync.await())
         }
-        // Started from "continue watching": work out the following episodes for autoplay.
-        if (args.type == "series" && args.queueIds.isEmpty() && partyId == null) {
-            lifecycleScope.launch {
-                val d = runCatching { Api.detail(args.type, args.metaId) }.getOrNull() ?: return@launch
-                val eps = d.episodes.filter { it.season > 0 }
+        // The title's page data: backdrop + logo for the loading screen, the episode list for
+        // the in-player picker, and (when started from "continue watching") the autoplay queue.
+        lifecycleScope.launch {
+            val d = runCatching { Api.detail(args.type, args.metaId) }.getOrNull() ?: return@launch
+            backdrop = d.base.background
+            logo = d.base.logo
+            val eps = d.episodes.filter { it.season > 0 }
+            allEpisodes = eps
+            if (args.type == "series" && args.queueIds.isEmpty() && partyId == null) {
                 val after = eps.dropWhile { it.id != args.videoId }.drop(1).take(30)
                 if (after.isNotEmpty() && args.queueIds.isEmpty()) {
                     args = args.copy(
@@ -1086,17 +1119,23 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                 .setSelectionFlags(if (default) MC.SELECTION_FLAG_DEFAULT else 0)
                 .build()
         }
+        fun release(sb: Subtitle) = sb.file?.substringBeforeLast('.')?.take(30)?.let { " · $it" } ?: ""
         if (primary != null) {
-            add(Api.subtitleProxy(primary.url, subOffset, ref.takeIf { !primary.hash }, second), "ar", "العربية", true)
+            val how = when {
+                primary.hash -> " — مطابقة لهذا الملف ✓"
+                ref != null -> " — مضبوطة تلقائياً"
+                else -> ""
+            }
+            add(Api.subtitleProxy(primary.url, subOffset, ref.takeIf { !primary.hash }, second), "ar", "العربية$how", true)
         } else if (translateOk && english != null) {
             // No Arabic subtitle exists: translate the best English one.
             add(Api.subtitleProxy(english.url, subOffset, ref.takeIf { !english.hash }, translate = true), "ar", "العربية (ترجمة آلية)", true)
         }
         subs.filter { it.isArabic && it.url != primary?.url }.take(3).forEachIndexed { i, sb ->
-            add(Api.subtitleProxy(sb.url, subOffset, ref.takeIf { !sb.hash }), "ar", "العربية ${i + 2}", false)
+            add(Api.subtitleProxy(sb.url, subOffset, ref.takeIf { !sb.hash }), "ar", "العربية ${i + 2}${if (sb.hash) " ✓" else release(sb)}", false)
         }
         subs.filter { it.isEnglish }.sortedByDescending { it.hash }.take(2).forEachIndexed { i, sb ->
-            add(Api.subtitleProxy(sb.url, subOffset, ref.takeIf { !sb.hash }), "en", "English ${i + 1}", primary == null && !translateOk && i == 0)
+            add(Api.subtitleProxy(sb.url, subOffset, ref.takeIf { !sb.hash }), "en", "English${if (sb.hash) " ✓" else release(sb)}", primary == null && !translateOk && i == 0)
         }
         return MediaItem.Builder().setUri(url).setSubtitleConfigurations(configs).build()
     }
@@ -1208,13 +1247,15 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     // ---------- remote / keys ----------
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (overlay is Overlay.Next || overlay is Overlay.Failed || overlay is Overlay.StillWatching || ui.subsOpen || ui.chatOpen || ui.audioOpen || ui.speedOpen) {
-            if ((ui.subsOpen || ui.chatOpen || ui.audioOpen || ui.speedOpen) && event.keyCode == KeyEvent.KEYCODE_BACK) {
+        if (overlay is Overlay.Next || overlay is Overlay.Failed || overlay is Overlay.StillWatching || ui.subsOpen || ui.chatOpen || ui.audioOpen || ui.speedOpen || ui.moreOpen || ui.episodesOpen) {
+            if ((ui.subsOpen || ui.chatOpen || ui.audioOpen || ui.speedOpen || ui.moreOpen || ui.episodesOpen) && event.keyCode == KeyEvent.KEYCODE_BACK) {
                 if (event.action == KeyEvent.ACTION_UP) {
                     ui.subsOpen = false
                     ui.chatOpen = false
                     ui.audioOpen = false
                     ui.speedOpen = false
+                    ui.moreOpen = false
+                    ui.episodesOpen = false
                 }
                 return true
             }
@@ -1330,13 +1371,31 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                         }
                     }
                     when (val o = overlay) {
-                        is Overlay.Loading -> Column(
-                            Modifier.align(Alignment.Center),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            CircularProgressIndicator(color = C.Paper, strokeWidth = 2.dp)
-                            VSpace(16.dp)
-                            Text(o.text, color = C.Muted, style = MaterialTheme.typography.bodyLarge)
+                        // Cinematic wait: the title's backdrop, its logo and a thin moving line.
+                        is Overlay.Loading -> Box(Modifier.fillMaxSize()) {
+                            val art = backdrop ?: args.poster
+                            if (art != null) {
+                                com.fivebroz.android.ui.Img(art.replace("/w780/", "/w1280/"), Modifier.fillMaxSize().kenBurns())
+                                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.55f), 0.5f to Color.Black.copy(alpha = 0.45f), 1f to Color.Black.copy(alpha = 0.9f))))
+                            }
+                            Column(
+                                Modifier.align(Alignment.Center).padding(horizontal = 40.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                com.fivebroz.android.ui.TitleArt(args.name, logo, 110.dp, 360.dp, MaterialTheme.typography.headlineMedium, center = true)
+                                if (args.label.isNotBlank()) {
+                                    VSpace(8.dp)
+                                    Text(args.label, color = C.Paper.copy(alpha = 0.85f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                VSpace(26.dp)
+                                androidx.compose.material3.LinearProgressIndicator(
+                                    Modifier.width(220.dp).height(2.dp),
+                                    color = C.Paper,
+                                    trackColor = Color.White.copy(alpha = 0.15f),
+                                )
+                                VSpace(12.dp)
+                                Text(o.text, color = C.Paper.copy(alpha = 0.6f), style = MaterialTheme.typography.labelLarge)
+                            }
                         }
                         is Overlay.Failed -> {
                             val fr = remember { FocusRequester() }

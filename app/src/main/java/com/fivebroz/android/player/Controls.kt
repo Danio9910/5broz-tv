@@ -91,6 +91,10 @@ class PlayerUi {
     var badges by mutableStateOf<String?>(null)
     var nightMode by mutableStateOf(false)
     var held2x by mutableStateOf(false)
+    var moreOpen by mutableStateOf(false)
+    var episodesOpen by mutableStateOf(false)
+    /** Intro / credits stretches on the timeline, as fractions of the film. */
+    var marks by mutableStateOf<List<Pair<Float, Float>>>(emptyList())
     /** Brightness / volume swipe feedback: which one, and level 0..1. */
     var gesture by mutableStateOf<Pair<androidx.compose.ui.graphics.vector.ImageVector, Float>?>(null)
     var chatOpen by mutableStateOf(false)
@@ -135,6 +139,10 @@ interface PlayerActions {
     fun hold2x(on: Boolean)
     fun setNightMode(on: Boolean)
     fun openExternal()
+    /** Episodes of this series (empty for films), for the in-player picker. */
+    val episodes: List<com.fivebroz.android.data.Episode>
+    val currentVideoId: String
+    fun playEpisode(e: com.fivebroz.android.data.Episode)
 }
 
 private fun fmt(ms: Long): String {
@@ -265,13 +273,11 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 val I = com.fivebroz.android.ui.Icons
-                                Pill("الترجمة", I.Subtitles) { ui.subsOpen = true }
-                                Pill("الصوت", I.Audio) { ui.audioOpen = true }
+                                Pill("الترجمة والصوت", I.Subtitles) { ui.subsOpen = true }
                                 if (!a.inParty) Pill(if (ui.speed == 1f) "السرعة" else speedLabel(ui.speed), I.Speed) { ui.speedOpen = true }
-                                Pill("مصدر آخر", I.Sources) { a.otherSource() }
-                                if (!isTv) Pill("مشغّل خارجي", I.Expand) { a.openExternal() }
+                                if (a.episodes.isNotEmpty() && !a.inParty) Pill("الحلقات", I.Episodes) { ui.episodesOpen = true }
                                 if (a.hasNextEpisode && (!a.inParty || a.partyIsHost)) Pill("الحلقة التالية", I.Next) { a.nextEpisode() }
-                                Pill(if (a.inParty) "الغرفة ${ui.partyCode}" else "غرفة مشاهدة", I.Party) { a.startParty() }
+                                Pill("المزيد", I.More) { ui.moreOpen = true }
                             }
                         }
                     }
@@ -294,6 +300,8 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
         if (ui.subsOpen) SubtitlePanel(ui, a)
         if (ui.audioOpen) AudioPanel(ui, a)
         if (ui.speedOpen) SpeedPanel(ui, a)
+        if (ui.moreOpen) MorePanel(ui, a, isTv)
+        if (ui.episodesOpen) EpisodesPanel(ui, a)
         // Above the controls so it stays reachable; on TV the OK key takes it while controls are hidden.
         if (ui.showSkipIntro && !ui.subsOpen && !ui.audioOpen && !ui.speedOpen && !ui.chatOpen) {
             Box(Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = if (ui.visible) 118.dp else 40.dp)) {
@@ -364,7 +372,7 @@ private fun Modifier.playerGestures(ui: PlayerUi, a: PlayerActions): Modifier = 
                 },
                 onDragCancel = { ui.gesture = null },
             ) { change, dy ->
-                if (ui.subsOpen || ui.audioOpen || ui.speedOpen || ui.chatOpen) return@detectVerticalDragGestures
+                if (ui.subsOpen || ui.audioOpen || ui.speedOpen || ui.chatOpen || ui.moreOpen || ui.episodesOpen) return@detectVerticalDragGestures
                 change.consume()
                 // A full-height swipe moves the level by ~120%.
                 val delta = -dy / size.height * 1.2f
@@ -514,6 +522,10 @@ private fun Scrubber(ui: PlayerUi, a: PlayerActions) {
             widthPx = with(LocalDensity.current) { maxWidth.toPx() }
             Box(Modifier.fillMaxWidth().height(h).background(Color.White.copy(alpha = 0.22f), RoundedCornerShape(50)))
             Box(Modifier.fillMaxWidth(bufFrac).height(h).background(Color.White.copy(alpha = 0.4f), RoundedCornerShape(50)))
+            // Intro and credits, from IntroDB: a brighter stretch on the line.
+            ui.marks.forEach { (s, e) ->
+                Box(Modifier.offset(x = maxWidth * s).width(maxWidth * (e - s).coerceAtLeast(0.004f)).height(h).background(C.Paper.copy(alpha = 0.55f)))
+            }
             Box(Modifier.fillMaxWidth(frac).height(h).background(C.Gold, RoundedCornerShape(50)))
             val thumb = if (focused || dragFrac != null) 18.dp else 13.dp
             Box(
@@ -543,6 +555,17 @@ private fun SubtitlePanel(ui: PlayerUi, a: PlayerActions) {
                 .verticalScroll(rememberScrollState()).padding(22.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            val audio = remember { a.audioOptions() }
+            if (audio.isNotEmpty()) {
+                Text("الصوت", style = MaterialTheme.typography.titleLarge)
+                VSpace(6.dp)
+                audio.forEach { o ->
+                    Focusable({ o.select(); ui.subsOpen = false }, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp), lift = 1.02f, ring = false) { f -> OptionRow(o, f) }
+                }
+                VSpace(14.dp)
+            }
+            Pill(if (ui.nightMode) "✓ الوضع الليلي" else "الوضع الليلي") { a.setNightMode(!ui.nightMode) }
+            VSpace(14.dp)
             Text("الترجمة", style = MaterialTheme.typography.titleLarge)
             VSpace(6.dp)
             options.forEachIndexed { i, o ->
@@ -701,6 +724,95 @@ private fun AudioPanel(ui: PlayerUi, a: PlayerActions) {
                     focusRequester = if (i == 0) first else null,
                     ring = false,
                 ) { f -> OptionRow(o, f) }
+            }
+        }
+    }
+}
+
+/** Everything that isn't needed every minute: another source, an external player, a watch party. */
+@Composable
+private fun MorePanel(ui: PlayerUi, a: PlayerActions, isTv: Boolean) {
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f))
+            .pointerInput(Unit) { detectTapGestures { ui.moreOpen = false } },
+    ) {
+        Column(
+            Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(320.dp).background(C.Ink900).padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("المزيد", style = MaterialTheme.typography.titleLarge)
+            VSpace(6.dp)
+            val I = com.fivebroz.android.ui.Icons
+            val rows = buildList {
+                add(Triple(I.Sources, "مصدر آخر") { a.otherSource() })
+                if (!isTv) add(Triple(I.Expand, "فتح في مشغّل آخر") { a.openExternal() })
+                add(Triple(I.Party, if (a.inParty) "الغرفة ${ui.partyCode}" else "غرفة مشاهدة") { a.startParty() })
+            }
+            rows.forEachIndexed { i, (icon, label, go) ->
+                Focusable({ ui.moreOpen = false; go() }, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp), lift = 1.02f, focusRequester = if (i == 0) first else null, ring = false) { f ->
+                    Row(
+                        Modifier.fillMaxWidth().background(if (f) C.Paper else C.Ink800).padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        com.fivebroz.android.ui.Ic(icon, 20.dp, if (f) C.Ink950 else C.Paper)
+                        Text(label, color = if (f) C.Ink950 else C.Paper, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Pick another episode without leaving the film. */
+@Composable
+private fun EpisodesPanel(ui: PlayerUi, a: PlayerActions) {
+    val eps = a.episodes
+    val current = eps.firstOrNull { it.id == a.currentVideoId }
+    var season by remember { mutableStateOf(current?.season ?: eps.firstOrNull()?.season ?: 1) }
+    val seasons = remember(eps) { eps.map { it.season }.distinct().sorted() }
+    val list = eps.filter { it.season == season }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(season) { runCatching { first.requestFocus() } }
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f))
+            .pointerInput(Unit) { detectTapGestures { ui.episodesOpen = false } },
+    ) {
+        Column(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(420.dp).background(C.Ink900).padding(22.dp)) {
+            Text("الحلقات", style = MaterialTheme.typography.titleLarge)
+            VSpace(8.dp)
+            if (seasons.size > 1) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    seasons.forEach { s -> Pill(if (s == season) "✓ الموسم $s" else "الموسم $s") { season = s } }
+                }
+                VSpace(10.dp)
+            }
+            androidx.compose.foundation.lazy.LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(list.size) { i ->
+                    val e = list[i]
+                    val now = e.id == a.currentVideoId
+                    Focusable(
+                        { ui.episodesOpen = false; if (!now) a.playEpisode(e) },
+                        Modifier.fillMaxWidth(), RoundedCornerShape(10.dp), lift = 1.02f,
+                        focusRequester = if (now || (current?.season != season && i == 0)) first else null, ring = false,
+                    ) { f ->
+                        Row(
+                            Modifier.fillMaxWidth().background(if (f) C.Paper else if (now) C.Ink700 else C.Ink800).padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Box(Modifier.width(112.dp).height(63.dp).background(C.Ink700, RoundedCornerShape(6.dp))) {
+                                e.thumbnail?.let { com.fivebroz.android.ui.Img(it, Modifier.fillMaxSize()) }
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text("${e.episode}. ${e.title}", color = if (f) C.Ink950 else C.Paper, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (now) Text("تشاهدها الآن", color = if (f) C.Ink950 else C.Gold, style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
             }
         }
     }

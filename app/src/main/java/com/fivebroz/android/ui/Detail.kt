@@ -69,7 +69,16 @@ import com.fivebroz.android.player.StreamInfo
 import com.fivebroz.android.player.rank
 import kotlinx.coroutines.launch
 
-private fun epLabel(e: Episode) = "م${e.season} · ح${e.episode}" + if (e.title.isNotBlank()) " — ${e.title}" else ""
+/** Age gate: kids see only kids-rated titles, family profiles skip adult ratings. */
+fun blockedForProfile(d: Detail): Boolean {
+    val cert = (d.certification ?: "").uppercase()
+    val kidsGenres = d.genres.any { it.contains("رسوم") || it.contains("عائل") || it.contains("أطفال") || it.contains("Animation") || it.contains("Family") || it.contains("Kids") }
+    val kidsOk = cert in setOf("G", "PG", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "TV-PG", "0", "6", "7") || (cert.isEmpty() && kidsGenres)
+    val adult = cert in setOf("R", "NC-17", "TV-MA", "18", "18+", "R18", "X")
+    return (com.fivebroz.android.data.Prefs.profileKids && !kidsOk) || (com.fivebroz.android.data.Prefs.profileFamily && adult)
+}
+
+fun epLabel(e: Episode) = "م${e.season} · ح${e.episode}" + if (e.title.isNotBlank()) " — ${e.title}" else ""
 
 private fun unavailableText(m: DetailModel): String = when {
     m.d.base.id.startsWith("tt") && com.fivebroz.android.data.Prefs.profileKids -> "هذا العنوان غير متاح في ملف الأطفال."
@@ -84,6 +93,8 @@ private class Extras(
     val suggested: Boolean,
     val onSuggest: () -> Unit,
     val onPerson: (com.fivebroz.android.data.CastMember) -> Unit,
+    /** "rate" or "more" — the small action sheets. */
+    val openSheet: (String) -> Unit,
     /** Opens the trailer on YouTube; null when the title has none. */
     val onTrailer: (() -> Unit)?,
 )
@@ -129,6 +140,7 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
     var sourcesFor by remember { mutableStateOf<Pair<String, String>?>(null) } // videoId to label
     var rating by remember { mutableIntStateOf(0) }
     var suggested by remember { mutableStateOf(false) }
+    var sheet by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(type, id) {
         try {
@@ -164,13 +176,7 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
 
     val isSeries = d.base.type == "series"
     val episodes = d.episodes.filter { it.season > 0 }
-    // Age gate: kids see only kids-rated titles, family profiles skip adult ratings.
-    val cert = (d.certification ?: "").uppercase()
-    val kidsGenres = d.genres.any { it.contains("رسوم") || it.contains("عائل") || it.contains("أطفال") || it.contains("Animation") || it.contains("Family") || it.contains("Kids") }
-    val kidsOk = cert in setOf("G", "PG", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "TV-PG", "0", "6", "7") || (cert.isEmpty() && kidsGenres)
-    val adult = cert in setOf("R", "NC-17", "TV-MA", "18", "18+", "R18", "X")
-    val blockedByProfile = (com.fivebroz.android.data.Prefs.profileKids && !kidsOk) ||
-        (com.fivebroz.android.data.Prefs.profileFamily && adult)
+    val blockedByProfile = blockedForProfile(d)
     val canPlay = d.base.id.startsWith("tt") && !blockedByProfile
 
     // Which episode the main button plays: the one in progress, else the first unwatched.
@@ -252,8 +258,33 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
             }
         },
         onPerson = { onPerson(it.id) },
+        openSheet = { sheet = it },
         onTrailer = d.trailer?.let { key -> { openTrailer(ctx, key) } },
     )
+
+    when (sheet) {
+        "rate" -> ActionSheet(
+            "قيّم «${d.base.name}»",
+            listOf(
+                SheetItem(Icons.ThumbUp, "أعجبني", extras.rating == 1) { extras.onRate(1) },
+                SheetItem(Icons.ThumbDown, "ليس لي", extras.rating == -1) { extras.onRate(-1) },
+            ),
+        ) { sheet = null }
+        "more" -> {
+            val aired = episodes.filter { e -> e.released?.let { it <= java.time.LocalDate.now().toString() } ?: true }
+            ActionSheet(
+                d.base.name,
+                buildList {
+                    if (mainVideo != null && canPlay && available != false) add(SheetItem(Icons.Sources, "اختيار المصدر") { openSources() })
+                    add(SheetItem(if (suggested) Icons.Check else Icons.Tonight, if (suggested) "مقترح لليلة" else "اقترح لليلة", suggested) { extras.onSuggest() })
+                    if (canPlay && aired.size > 3) add(SheetItem(Icons.Next, "حلقة عشوائية") { aired.random().let { e -> play(e.id, epLabel(e), null) } })
+                    add(SheetItem(Icons.Check, "شاهدته") {
+                        scope.launch { if (Db.markWatched(d.base)) { ItemEvents.resumeVersion++; refresh(d) } }
+                    })
+                },
+            ) { sheet = null }
+        }
+    }
 
     if (isTv) {
         TvDetail(m, saved, finished, resumeVideo, season, { season = it }, available, ::play, toggleSaved, openSources, onOpen, extras)
@@ -347,7 +378,10 @@ private fun PhoneDetail(
                         GoldButton(m.mainText, { play(m.mainVideo, m.mainLabel, null) }, Modifier.fillMaxWidth(), fill = true, icon = Icons.Play)
                         if (resumeVideo == m.mainVideo && resumeProgress > 0f) {
                             VSpace(8.dp)
-                            ProgressLine(resumeProgress)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Box(Modifier.weight(1f)) { ProgressLine(resumeProgress) }
+                                remainingText(d, resumeProgress)?.let { Text(it, color = C.Muted, style = MaterialTheme.typography.labelMedium) }
+                            }
                         }
                     } else if (available == false || !m.canPlay) {
                         Text(unavailableText(m), color = C.Muted, style = MaterialTheme.typography.bodyMedium)
@@ -375,16 +409,15 @@ private fun PhoneDetail(
                     VSpace(18.dp)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         val w = Modifier.weight(1f)
+                        // Four clear actions; the rest live under "more".
                         ActionIcon(if (saved) Icons.Check else Icons.Plus, "قائمتي", toggleSaved, on = saved, modifier = w)
-                        ActionIcon(if (x.suggested) Icons.Check else Icons.Tonight, "لليلة", x.onSuggest, on = x.suggested, modifier = w)
-                        ActionIcon(Icons.ThumbUp, "أعجبني", { x.onRate(1) }, on = x.rating == 1, modifier = w)
-                        ActionIcon(Icons.ThumbDown, "ليس لي", { x.onRate(-1) }, on = x.rating == -1, modifier = w)
+                        ActionIcon(
+                            when (x.rating) { 1 -> Icons.ThumbUp; -1 -> Icons.ThumbDown; else -> Icons.Star },
+                            when (x.rating) { 1 -> "أعجبني"; -1 -> "ليس لي"; else -> "تقييم" },
+                            { x.openSheet("rate") }, on = x.rating != 0, modifier = w,
+                        )
                         x.onTrailer?.let { ActionIcon(Icons.Trailer, "الإعلان", it, modifier = w) }
-                        run {
-                            val aired = m.episodes.filter { e -> e.released?.let { it <= java.time.LocalDate.now().toString() } ?: true }
-                            if (m.canPlay && aired.size > 3) ActionIcon(Icons.Next, "عشوائية", { aired.random().let { e -> play(e.id, epLabel(e), null) } }, modifier = w)
-                        }
-                        if (m.mainVideo != null && m.canPlay && available != false) ActionIcon(Icons.Sources, "المصادر", openSources, modifier = w)
+                        ActionIcon(Icons.More, "المزيد", { x.openSheet("more") }, modifier = w)
                     }
                     VSpace(10.dp)
                 }
@@ -575,15 +608,12 @@ private fun TvDetail(
                             icon = if (saved) Icons.Check else Icons.Plus,
                             focusRequester = if (m.mainText == null) playFr else null,
                         )
-                        if (m.mainVideo != null && m.canPlay && available != false) GoldButton("المصادر", openSources, filled = false, icon = Icons.Sources)
-                        GoldButton(if (x.suggested) "مقترح لليلة" else "اقترح لليلة", x.onSuggest, filled = false, icon = if (x.suggested) Icons.Check else Icons.Tonight)
-                        GoldButton("أعجبني", { x.onRate(1) }, filled = false, icon = if (x.rating == 1) Icons.Check else Icons.ThumbUp)
-                        GoldButton("ليس لي", { x.onRate(-1) }, filled = false, icon = if (x.rating == -1) Icons.Check else Icons.ThumbDown)
+                        GoldButton(
+                            when (x.rating) { 1 -> "أعجبني"; -1 -> "ليس لي"; else -> "تقييم" }, { x.openSheet("rate") }, filled = false,
+                            icon = when (x.rating) { 1 -> Icons.ThumbUp; -1 -> Icons.ThumbDown; else -> Icons.Star },
+                        )
                         x.onTrailer?.let { GoldButton("الإعلان", it, filled = false, icon = Icons.Trailer) }
-                        run {
-                            val aired = m.episodes.filter { e -> e.released?.let { it <= java.time.LocalDate.now().toString() } ?: true }
-                            if (m.canPlay && aired.size > 3) GoldButton("حلقة عشوائية", { aired.random().let { e -> play(e.id, epLabel(e), null) } }, filled = false, icon = Icons.Next)
-                        }
+                        GoldButton("المزيد", { x.openSheet("more") }, filled = false, icon = Icons.More)
                     }
                     if (available == false || !m.canPlay) {
                         VSpace(12.dp)
@@ -638,6 +668,14 @@ private fun ratingsLine(r: Map<String, Double>): String? {
         }
     }
     return parts.joinToString(" · ").ifBlank { null }
+}
+
+/** "بقي 47 د" for a film in progress. */
+private fun remainingText(d: Detail, progress: Float): String? {
+    if (d.base.type == "series") return null
+    val mins = d.runtime?.filter { it.isDigit() }?.toIntOrNull() ?: return null
+    val left = (mins * (1 - progress)).toInt()
+    return if (left > 0) "بقي $left د" else null
 }
 
 /** Highlights the episodes people rated highest (9+ on TMDB). */

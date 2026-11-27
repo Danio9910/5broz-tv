@@ -154,3 +154,39 @@ private fun MenuLine(icon: androidx.compose.ui.graphics.vector.ImageVector, labe
         Text(label, style = MaterialTheme.typography.bodyLarge)
     }
 }
+
+/** One entry in an action sheet. */
+data class SheetItem(val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String, val on: Boolean = false, val action: () -> Unit)
+
+/** A short list of actions: a bottom sheet on touch screens, a centred panel on TV. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ActionSheet(title: String, items: List<SheetItem>, onDismiss: () -> Unit) {
+    val body: @Composable () -> Unit = {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 18.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(10.dp))
+            val first = remember { FocusRequester() }
+            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+            items.forEachIndexed { i, it ->
+                Focusable({ onDismiss(); it.action() }, Modifier.fillMaxWidth(), RoundedCornerShape(12.dp), lift = 1f, ring = false, focusRequester = if (i == 0) first else null) { f ->
+                    Row(
+                        Modifier.fillMaxWidth().background(if (f) C.Ink700 else androidx.compose.ui.graphics.Color.Transparent).padding(horizontal = 6.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Ic(it.icon, 22.dp, if (it.on) C.Gold else C.Paper)
+                        Text(it.label, style = MaterialTheme.typography.bodyLarge, color = if (it.on) C.Gold else C.Paper)
+                    }
+                }
+            }
+        }
+    }
+    if (LocalIsTv.current) {
+        Dialog(onDismissRequest = onDismiss) {
+            Box(Modifier.widthIn(max = 460.dp).clip(RoundedCornerShape(18.dp)).background(C.Ink900).padding(top = 20.dp)) { body() }
+        }
+    } else {
+        ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Ink900) { Box(Modifier.navigationBarsPadding()) { body() } }
+    }
+}

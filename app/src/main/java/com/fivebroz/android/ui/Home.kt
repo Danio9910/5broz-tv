@@ -57,6 +57,7 @@ import com.fivebroz.android.data.Prefs
 import com.fivebroz.android.data.Preview
 import com.fivebroz.android.data.ResumeItem
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 /** Title artwork already looked up this session (null = the title has none). */
@@ -153,7 +154,8 @@ private fun PhoneHome(
     val cfg = LocalConfiguration.current
     // Phones get a tall poster; tablets a wide cinematic banner.
     val heroH = if (tablet) (cfg.screenWidthDp * 0.52f).coerceAtMost(cfg.screenHeightDp * 0.72f).dp
-    else (cfg.screenWidthDp * 1.32f).dp
+    // Short enough that "continue watching" shows without scrolling.
+    else minOf(cfg.screenWidthDp * 1.12f, cfg.screenHeightDp * 0.58f).dp
     val heroPx = with(LocalDensity.current) { heroH.toPx() }
     val solid by remember {
         derivedStateOf {
@@ -237,6 +239,9 @@ private fun JoinChip(g: Dp) {
 /** Swipeable poster hero — tall artwork, title and one clear action, centred. */
 @Composable
 private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (Preview) -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var starting by remember { mutableStateOf(false) }
     val pager = rememberPagerState { items.size }
     LaunchedEffect(pager, items) {
         while (items.size > 1) {
@@ -261,7 +266,7 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
                     ),
                 )
                 Column(
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 64.dp),
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 70.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     TitleArt(it.name, it.logo, 96.dp, 300.dp, MaterialTheme.typography.displayLarge, center = true)
@@ -271,13 +276,22 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
             }
         }
         Row(
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp),
+            Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            GoldButton("شاهد الآن", { onOpen(items[pager.currentPage]) }, icon = Icons.Play)
-            if (items.size > 1) Dots(items.size, pager.currentPage)
+            // Play really plays (or resumes); details opens the page.
+            GoldButton(if (starting) "لحظة…" else "تشغيل", {
+                val p = items[pager.currentPage]
+                if (!starting) scope.launch {
+                    starting = true
+                    if (!quickPlay(ctx, p)) onOpen(p)
+                    starting = false
+                }
+            }, icon = Icons.Play)
+            GoldButton("التفاصيل", { onOpen(items[pager.currentPage]) }, filled = false, icon = Icons.Info)
         }
+        if (items.size > 1) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp)) { Dots(items.size, pager.currentPage) }
     }
 }
 

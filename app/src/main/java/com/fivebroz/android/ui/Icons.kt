@@ -68,6 +68,9 @@ object Icons {
     val Edit = line("edit", "M12 20h9", "M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z")
     val Trash = line("trash", "M3 6h18", "M8 6V4h8v2", "M19 6l-1 14H6L5 6")
     val Vote = line("vote", "M12 4l7 9h-4v7H9v-7H5z")
+    val More = line("more", "M5 12h.01", "M12 12h.01", "M19 12h.01")
+    val Star = line("star", "M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z")
+    val Episodes = line("episodes", "M3 5h18", "M3 12h18", "M3 19h12")
     val Info = line("info", "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "M12 16v-4", "M12 8h.01")
 
     // player

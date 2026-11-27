@@ -343,7 +343,8 @@ fun PhoneHeader(solid: Float, onProfile: () -> Unit) {
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
-                    listOf(C.Ink950.copy(alpha = 0.55f + 0.4f * solid), C.Ink950.copy(alpha = 0.92f * solid)),
+                    // fully opaque once scrolled, so nothing from the banner shows through
+                    listOf(C.Ink950.copy(alpha = 0.55f + 0.45f * solid), C.Ink950.copy(alpha = solid)),
                 ),
             )
             .statusBarsPadding()
