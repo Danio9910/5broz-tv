@@ -115,7 +115,7 @@ class TorrentEngine(private val workDir: File) {
                 if (closed) throw IOException("closed")
                 if (System.currentTimeMillis() > until) throw IOException("no source started in ${timeoutSec}s")
                 for (sl in slots) {
-                    val th = sl.th ?: s.find(Sha1Hash(sl.infoHash))?.also { sl.th = it } ?: continue
+                    val th = sl.th ?: s.find(Sha1Hash.parseHex(sl.infoHash))?.also { sl.th = it } ?: continue
                     if (!th.isValid) continue
                     if (!sl.ready) {
                         if (!th.status().hasMetadata()) continue
