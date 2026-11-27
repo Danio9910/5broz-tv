@@ -661,6 +661,11 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             return
         }
         val hash = stream.infoHash ?: return tryNext()
+        if (!torrentSupported) {
+            // A processor the torrent engine wasn't built for: say so instead of crashing.
+            overlay = Overlay.Failed("هذا الجهاز لا يدعم التشغيل عبر التورنت.")
+            return
+        }
         player?.stop()
         overlay = Overlay.Loading("جارٍ الاتصال بشبكة التورنت…")
         torrentJob = lifecycleScope.launch {
@@ -698,6 +703,16 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
 
     private fun stopTorrent() {
         lifecycleScope.launch(Dispatchers.IO) { engine.close() }
+    }
+
+    private val torrentSupported: Boolean by lazy {
+        try {
+            Class.forName("org.libtorrent4j.swig.libtorrent_jni")
+            true
+        } catch (t: Throwable) {
+            Log.w("5broz", "torrent engine unavailable on this CPU: $t")
+            false
+        }
     }
 
     private fun buildItem(url: String): MediaItem {
@@ -835,8 +850,17 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                 }
                 return super.dispatchKeyEvent(event)
             }
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                 if (down) togglePlay()
+                return true
+            }
+            // Dedicated play / pause keys (Bluetooth remotes, headsets) only ever do what they say.
+            KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                if (down && player?.isPlaying == false) togglePlay()
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                if (down && player?.isPlaying == true) togglePlay()
                 return true
             }
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (down) seekBy(30); return true }

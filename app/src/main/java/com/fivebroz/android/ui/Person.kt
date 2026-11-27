@@ -99,14 +99,14 @@ fun PersonScreen(id: String, onOpen: (Preview) -> Unit, onBack: () -> Unit) {
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Row(
-                        Modifier.fillMaxWidth().then(if (tv) Modifier else Modifier.statusBarsPadding()).padding(top = if (tv) 0.dp else 56.dp, bottom = 8.dp),
+                        Modifier.widthIn(max = 960.dp).then(if (tv) Modifier else Modifier.statusBarsPadding()).padding(top = if (tv) 0.dp else 56.dp, bottom = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(if (tv) 28.dp else 18.dp),
                     ) {
                         val ph = if (tv) 180.dp else 110.dp
                         Box(Modifier.size(ph).clip(CircleShape).background(C.Ink800)) {
                             Img(p.photo, Modifier.fillMaxSize(), p.name)
                         }
-                        Column(Modifier.weight(1f).widthIn(max = 720.dp)) {
+                        Column(Modifier.weight(1f)) {
                             Text(p.name, style = if (tv) MaterialTheme.typography.displayLarge else MaterialTheme.typography.headlineMedium)
                             p.born?.let { Text("مواليد $it", color = C.Muted, style = MaterialTheme.typography.labelLarge) }
                             if (!p.bio.isNullOrBlank()) {

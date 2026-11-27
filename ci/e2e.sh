@@ -105,17 +105,16 @@ sleep 6
 adb shell input tap $CX $CY; sleep 0.7      # show controls
 adb shell input tap $CX $CY; sleep 2        # big centre button = pause
 shot 6a-paused
+tap_text "السرعة"
+sleep 2; shot 6d-speed
+tap_text "1.5×"; sleep 1
+sleep 1; shot 6e-speed-set
 tap_text "غرفة مشاهدة"
 sleep 8; shot 6b-party
 adb shell input keyevent 4; sleep 2
 tap_text "الترجمة"
 sleep 2; shot 6c-subtitles
 adb shell input keyevent 4; sleep 1
-adb shell input tap $CX $CY; sleep 0.7
-tap_text "السرعة"
-sleep 2; shot 6d-speed
-tap_text "1.5×"; sleep 1
-adb shell input tap $CX $CY; sleep 1; shot 6e-speed-set
 # Picture-in-picture: resume, then go home — the film should shrink into a floating window.
 adb shell input keyevent 126; sleep 3
 adb shell input keyevent 3; sleep 5

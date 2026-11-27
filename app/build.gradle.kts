@@ -83,6 +83,8 @@ dependencies {
     implementation("org.libtorrent4j:libtorrent4j-android-arm:$lt")
     implementation("org.libtorrent4j:libtorrent4j-android-arm64:$lt")
     implementation("org.libtorrent4j:libtorrent4j-android-x86_64:$lt")
+    // 32-bit x86 only matters for the Android TV emulator in CI — kept out of the release APK.
+    debugImplementation("org.libtorrent4j:libtorrent4j-android-x86:$lt")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     val media3 = "1.6.1"
