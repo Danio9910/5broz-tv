@@ -83,7 +83,9 @@ class EngineNetworkTest {
             val w0 = System.currentTimeMillis()
             engine.warmUp()
             println("ENGINE-TEST warm-up ${System.currentTimeMillis() - w0} ms")
-            Thread.sleep(3000) // the app warms up while the person browses
+            // The title page is open: file lists are looked up ahead of time (no video data).
+            engine.prefetch(listOf(TorrentEngine.magnet(dead, emptyList()), TorrentEngine.magnet(hash, emptyList())))
+            Thread.sleep(10_000) // the person reads the description
             val t0 = System.currentTimeMillis()
             val (winner, url) = engine.openFastest(
                 listOf(TorrentEngine.magnet(dead, emptyList()) to null, TorrentEngine.magnet(hash, emptyList()) to null),

@@ -90,6 +90,13 @@ fun describe(s: Stream, isTv: Boolean): StreamInfo {
     if (isHevc) score -= if (Caps.hevc) 45 else 150
     if (isHevc && is10) score -= if (Caps.hevc10) 30 else 120
     if (dv) score -= 30 // Dolby Vision shows wrong colours on many devices
+    // Dubbed releases (Italian, French, Hindi…) — the family wants the original or English audio.
+    val flags = Regex("[\\x{1F1E6}-\\x{1F1FF}]{2}").findAll(text).map { it.value }.toSet()
+    val foreignFlag = flags.isNotEmpty() && flags.none { it == "🇬🇧" || it == "🇺🇸" || it == "🇸🇦" }
+    val foreignTag = Regex("""\b(ita|italian|french|vff|vf|truefrench|german|ger|spanish|esp|castellano|latino|rus|russian|hindi|tamil|telugu|turkish|tur|pol|polish)\b""").containsMatchIn(low)
+    if (foreignFlag) score -= 90
+    if (foreignTag) score -= 60
+    if (Regex("""\b(dual|multi)\b""").containsMatchIn(low)) score -= 15
     if (Regex("""\b(cam|hdcam|ts|telesync)\b""").containsMatchIn(low)) score -= 150
     if (gb != null && gb > 25) score -= 20
     if (gb != null && gb < 0.4) score -= 10

@@ -47,6 +47,7 @@ class TorrentEngine(private val workDir: File) {
 
     private var session: SessionManager? = null
     private var handle: TorrentHandle? = null
+    @Volatile private var currentHash: String? = null
     private var server: StreamServer? = null
 
     @Volatile private var closed = false
@@ -76,6 +77,38 @@ class TorrentEngine(private val workDir: File) {
         session()
     }
 
+    /** Torrents whose metadata is being fetched ahead of time (no video downloaded yet). */
+    private val prefetched = LinkedHashSet<String>()
+
+    /**
+     * While the title page is open: look up the likely sources' file lists in
+     * "upload mode" (metadata and peers only, no video data), so pressing play
+     * only has to wait for the first piece. Older prefetches are dropped.
+     */
+    @Synchronized
+    fun prefetch(magnets: List<String>) {
+        try {
+            val s = session()
+            workDir.mkdirs()
+            val want = magnets.mapNotNull { m -> hashOf(m)?.let { it to m } }.toMap()
+            for (h in prefetched.toList()) {
+                if (h in want) continue
+                prefetched.remove(h)
+                if (h == currentHash) continue
+                s.find(Sha1Hash.parseHex(h))?.let { th -> runCatching { s.remove(th, SessionHandle.DELETE_FILES) } }
+            }
+            for ((h, m) in want) {
+                if (h in prefetched || s.find(Sha1Hash.parseHex(h)) != null) continue
+                s.download(m, workDir, TorrentFlags.SEQUENTIAL_DOWNLOAD.or_(TorrentFlags.UPLOAD_MODE))
+                prefetched += h
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun hashOf(magnet: String) =
+        Regex("btih:([0-9a-fA-F]{40})").find(magnet)?.groupValues?.get(1)?.lowercase()
+
     /** One candidate torrent while several race to start. */
     private class Slot(val index: Int, val infoHash: String, val fileIdx: Int?) {
         var th: TorrentHandle? = null
@@ -104,9 +137,17 @@ class TorrentEngine(private val workDir: File) {
         workDir.mkdirs()
         val s = session()
         val slots = items.mapIndexed { i, (magnet, idx) ->
-            val hash = Regex("btih:([0-9a-fA-F]{40})").find(magnet)?.groupValues?.get(1)?.lowercase()
-                ?: throw IOException("bad magnet")
-            Slot(i, hash, idx).also { s.download(magnet, workDir, TorrentFlags.SEQUENTIAL_DOWNLOAD) }
+            val hash = hashOf(magnet) ?: throw IOException("bad magnet")
+            val existing = s.find(Sha1Hash.parseHex(hash))
+            if (existing != null && existing.isValid) {
+                // Prefetched: it already knows its files and peers — just start downloading.
+                existing.unsetFlags(TorrentFlags.UPLOAD_MODE)
+                existing.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
+            } else {
+                s.download(magnet, workDir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
+            }
+            synchronized(this) { prefetched.remove(hash) }
+            Slot(i, hash, idx)
         }
         val until = System.currentTimeMillis() + timeoutSec * 1000L
         var winner: Slot? = null
@@ -142,6 +183,7 @@ class TorrentEngine(private val workDir: File) {
         numPieces = ti.numPieces()
         file = File(workDir, fs.filePath(w.idx))
         handle = w.th
+        currentHash = w.infoHash
         val srv = StreamServer(this)
         server = srv
         return w.index to srv.start()
@@ -223,6 +265,7 @@ class TorrentEngine(private val workDir: File) {
     }
 
     private fun closeCurrent() {
+        currentHash = null
         server?.stop()
         server = null
         val th = handle

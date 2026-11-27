@@ -24,8 +24,21 @@ object StreamPrefetch {
         val key = "$type/$videoId"
         val e = entry
         if (e != null && e.key == key && System.currentTimeMillis() - e.at < 10 * 60_000) return
-        entry = Entry(key, System.currentTimeMillis(), scope.async { Api.streams(type, videoId) })
-        warmEngine(ctx)
+        val app = ctx.applicationContext
+        val isTv = app.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        val job = scope.async { Api.streams(type, videoId) }
+        entry = Entry(key, System.currentTimeMillis(), job)
+        scope.launch {
+            try {
+                // Look up the best sources' file lists now, so play only waits for the video itself.
+                val top = rank(job.await(), isTv).map { it.stream }.filter { it.url == null && it.infoHash != null }.take(3)
+                if (top.isNotEmpty()) {
+                    Torrents.get(app).prefetch(top.map { com.fivebroz.torrent.TorrentEngine.magnet(it.infoHash!!, it.trackers) })
+                }
+            } catch (t: Throwable) {
+                Log.w("5broz", "prefetch failed: $t")
+            }
+        }
     }
 
     /** The prefetched list (possibly empty), or null if it failed or isn't for this video. */

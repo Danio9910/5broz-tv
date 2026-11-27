@@ -595,6 +595,12 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             )
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, http)))
             .setTrackSelector(selector)
+            // Start as soon as one second of video is in (the default waits 2.5 s).
+            .setLoadControl(
+                androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(15_000, 50_000, 1_000, 2_500)
+                    .build(),
+            )
             .build()
             .also { p ->
                 p.addListener(object : Player.Listener {
