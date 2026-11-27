@@ -40,8 +40,12 @@ class MainActivity : ComponentActivity() {
         // Start the torrent engine's network while the person is still browsing.
         com.fivebroz.android.player.StreamPrefetch.warmEngine(this)
         // Daily check for new episodes of followed series; refresh the home-screen widget.
-        NewEpisodesWorker.schedule(this)
-        ContinueWidget.refresh(this)
+        // (WorkManager opens a database: done off the main thread, after the first screen.)
+        val app = applicationContext
+        Thread {
+            Thread.sleep(3000)
+            runCatching { NewEpisodesWorker.schedule(app); ContinueWidget.refresh(app) }
+        }.start()
         // A title link (TV home screen) only opens for a device that's already set up.
         takeRemoteLink(intent)
         if (intent?.data != null && (!Prefs.gatePassed || Prefs.profileId == null)) intent = intent.setData(null)

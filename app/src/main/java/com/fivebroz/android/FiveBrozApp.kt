@@ -70,6 +70,8 @@ class FiveBrozApp : Application() {
     private fun startLoop() {
         loop?.cancel()
         loop = scope.launch {
+            // let the first screen draw before talking to the network
+            delay(2500)
             var lastBeat = 0L
             while (isActive) {
                 val now = SystemClock.elapsedRealtime()
