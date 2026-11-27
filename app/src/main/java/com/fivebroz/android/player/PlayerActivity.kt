@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -1389,7 +1391,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                                 }
                                 VSpace(26.dp)
                                 androidx.compose.material3.LinearProgressIndicator(
-                                    Modifier.size(220.dp, 2.dp),
+                                    Modifier.width(220.dp).height(2.dp),
                                     color = C.Paper,
                                     trackColor = Color.White.copy(alpha = 0.15f),
                                 )
