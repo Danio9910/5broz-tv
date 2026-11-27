@@ -53,6 +53,12 @@ adb shell am start -n $PKG/.MainActivity
 sleep 20; shot 1-home
 adb shell input swipe $((W/2)) $((H*3/4)) $((W/2)) $((H/4)) 400
 sleep 2; shot 1b-home-scrolled
+# Long-press a poster: the quick-actions menu.
+adb shell uiautomator dump /sdcard/ui.xml > /dev/null; adb pull /sdcard/ui.xml /tmp/ui.xml > /dev/null
+XY=$(python3 ci/find.py /tmp/ui.xml "@poster"); echo "long-press $XY"
+[ -n "$XY" ] && adb shell input swipe $XY $XY 1000
+sleep 3; shot 1c-item-menu
+adb shell input keyevent 4; sleep 2
 adb shell input swipe $((W/2)) $((H/4)) $((W/2)) $((H*9/10)) 300
 sleep 1
 # Find a well-known, released film through search.
@@ -69,6 +75,23 @@ adb shell uiautomator dump /sdcard/ui.xml; adb pull /sdcard/ui.xml $OUT/ui-resul
 tap_text "@poster"
 sleep 15; shot 2b-detail
 adb shell uiautomator dump /sdcard/ui.xml; adb pull /sdcard/ui.xml $OUT/ui-detail.xml
+# Cast row and an actor's page.
+adb shell input swipe $((W/2)) $((H*3/4)) $((W/2)) $((H/4)) 500; sleep 2
+shot 2c-detail-cast
+adb shell uiautomator dump /sdcard/ui.xml > /dev/null; adb pull /sdcard/ui.xml /tmp/ui.xml > /dev/null
+XY=$(python3 - <<PY
+import re,xml.etree.ElementTree as ET
+r=ET.parse("/tmp/ui.xml").getroot()
+for n in r.iter("node"):
+    if "طاقم التمثيل" in (n.get("text") or ""):
+        b=list(map(int,re.findall(r"\d+",n.get("bounds"))))
+        print(b[2]-60, b[3]+110); break
+PY
+)
+echo "cast $XY"
+if [ -n "$XY" ]; then adb shell input tap $XY; sleep 8; shot 2d-person; adb shell input keyevent 4; sleep 3; fi
+adb shell input swipe $((W/2)) $((H/4)) $((W/2)) $((H*9/10)) 300; sleep 1
+adb shell input swipe $((W/2)) $((H/4)) $((W/2)) $((H*9/10)) 300; sleep 2
 tap_text "تشغيل"
 sleep 30; shot 3-player-30s
 sleep 45; shot 4-player-75s

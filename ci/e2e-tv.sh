@@ -25,8 +25,18 @@ adb shell am start -n $PKG/.MainActivity
 sleep 25; shot tv1-home
 key DPAD_LEFT; key DPAD_LEFT 2; shot tv2-moved-in-row
 key DPAD_DOWN 2; shot tv3-next-row
+key MENU 3; shot tv3b-item-menu
+key BACK 2
 key DPAD_CENTER 10; shot tv4-detail
+key DPAD_DOWN; key DPAD_DOWN; key DPAD_DOWN 2; shot tv4b-detail-lower
 key BACK 3
 key DPAD_RIGHT; key DPAD_RIGHT; key DPAD_RIGHT 2; shot tv5-rail
+# Play a film for a minute, leave, then the TV home screen's "Continue watching" should list it.
+adb shell am start -a android.intent.action.VIEW -d "fivebroz://title/movie/tt0111161" $PKG
+sleep 12; shot tv6-deeplink
+key DPAD_CENTER 70; shot tv7-player
+key BACK 1; key BACK 3
+adb shell content query --uri content://android.media.tv/watch_next_program --projection title:last_playback_position_millis:intent_uri > $OUT/watchnext.txt 2>&1
+echo "--- end ---" >> $OUT/watchnext.txt
 adb logcat -d -s 5broz:V AndroidRuntime:E > $OUT/logcat.txt; echo "--- end ---" >> $OUT/logcat.txt
 exit 0
