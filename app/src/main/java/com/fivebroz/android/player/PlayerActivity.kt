@@ -801,6 +801,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                         if (state == Player.STATE_READY && overlay is Overlay.Loading) overlay = Overlay.None
                         if (state == Player.STATE_READY && syncedFor != currentUrl) {
                             currentKey?.let { com.fivebroz.android.data.Prefs.setLastSource(args.videoId, it) }
+                            scrobble("start")
                             autoSync()
                         }
                         if (state == Player.STATE_ENDED) onEnded()
@@ -1136,6 +1137,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
 
     private fun onEnded() {
         saveNow()
+        scrobble("stop")
         if (args.queueIds.isEmpty()) {
             finish()
             return
@@ -1242,8 +1244,21 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         if (!isInPictureInPictureMode) player?.pause()
     }
 
+    /** Tells Trakt what's playing (only does anything once the profile linked Trakt). */
+    private fun scrobble(event: String) {
+        val p = player ?: return
+        val dur = p.duration.takeIf { it > 0 } ?: return
+        val progress = p.currentPosition * 100.0 / dur
+        val id = args.videoId
+        if (!id.startsWith("tt") || partyId != null && !isHost) return
+        kotlinx.coroutines.GlobalScope.launch {
+            Api.trakt("scrobble", org.json.JSONObject().put("id", id).put("event", event).put("progress", progress))
+        }
+    }
+
     override fun onStop() {
         super.onStop()
+        scrobble("pause")
         // Leaving the app, or closing the picture-in-picture window, stops the film.
         saveNow()
         player?.pause()

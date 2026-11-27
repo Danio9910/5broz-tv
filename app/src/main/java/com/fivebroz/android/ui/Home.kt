@@ -102,7 +102,9 @@ fun HomeScreen(onOpen: (Preview) -> Unit, onProfile: () -> Unit) {
     LaunchedEffect(attempt, ItemEvents.resumeVersion) { resume = Db.continueWatching() }
     // Rows from the household's addons (not on kids profiles: addon catalogs aren't filtered).
     var addonRows by remember { mutableStateOf<List<com.fivebroz.android.data.Row>>(emptyList()) }
-    LaunchedEffect(attempt, ItemEvents.libraryVersion) { if (!kids) addonRows = Api.addonRows() }
+    LaunchedEffect(attempt, ItemEvents.libraryVersion) {
+        if (!kids) addonRows = Api.traktRows() + Api.addonRows()
+    }
     val shown = home?.let { h ->
         // The person's own row order and hidden rows (Settings → الرئيسية).
         val hidden = Prefs.hiddenRows

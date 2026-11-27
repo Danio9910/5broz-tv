@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.fivebroz.android.data.Prefs
+import kotlinx.coroutines.launch
 
 @Composable
 private fun Choice(label: String, on: Boolean, onClick: () -> Unit) {
@@ -166,10 +167,52 @@ fun SettingsScreen(onBack: () -> Unit, onAddons: () -> Unit) {
                 }
             }
 
+            if (!Prefs.profileKids) {
+                Section("Trakt", "مزامنة ما تشاهده، وقائمتك وتوصياتك من Trakt تظهر في الرئيسية. لكل ملف حسابه.") { TraktLink() }
+            }
+
             Section("عن التطبيق") {
                 Text("5broz — الإصدار ${com.fivebroz.android.BuildConfig.VERSION_NAME}", color = C.Muted)
             }
             VSpace(40.dp)
         }
+    }
+}
+
+@Composable
+private fun TraktLink() {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var status by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    var code by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    var tick by remember { mutableIntStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(tick) { status = com.fivebroz.android.data.Api.trakt("status") }
+    val st = status
+    when {
+        st == null -> Text("…", color = C.Muted)
+        !st.optBoolean("configured") -> Text("Trakt غير مفعّل بعد على الخادم.", color = C.Muted)
+        st.optBoolean("connected") -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("مرتبط: ${st.optString("username")}", color = C.Paper)
+            Choice("فصل", false) {
+                scope.launch { com.fivebroz.android.data.Api.trakt("disconnect"); tick++ }
+            }
+        }
+        code != null -> Column {
+            Text("افتح trakt.tv/activate من أي جهاز واكتب الرمز:", color = C.Muted)
+            Text(code!!.optString("user_code"), style = MaterialTheme.typography.displayLarge, color = C.Gold)
+            Text("ننتظر التأكيد…", color = C.Muted)
+            androidx.compose.runtime.LaunchedEffect(code) {
+                val c = code ?: return@LaunchedEffect
+                val every = c.optLong("interval", 5) * 1000
+                val until = System.currentTimeMillis() + c.optLong("expires_in", 600) * 1000
+                while (System.currentTimeMillis() < until) {
+                    kotlinx.coroutines.delay(every)
+                    val r = com.fivebroz.android.data.Api.trakt("poll", org.json.JSONObject().put("device_code", c.optString("device_code")))
+                    if (r?.optBoolean("ok") == true) break
+                }
+                code = null
+                tick++
+            }
+        }
+        else -> GoldButton("ربط بحساب Trakt", { scope.launch { code = com.fivebroz.android.data.Api.trakt("code") } }, filled = false)
     }
 }

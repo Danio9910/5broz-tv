@@ -41,6 +41,8 @@ data class Detail(
     val collection: List<Preview>,
     val people: List<CastMember> = emptyList(),
     val trailer: String? = null, // YouTube key
+    /** Scores from other sites (MDBList), e.g. "tomatoes" -> 91. */
+    val ratings: Map<String, Double> = emptyMap(),
 )
 
 data class CastMember(val id: String, val name: String, val character: String?, val photo: String?)
@@ -168,6 +170,7 @@ object Api {
                 CastMember(pid, c.str("name") ?: return@mapObjects null, c.str("character"), c.str("photo"))
             },
             trailer = m.str("trailer"),
+            ratings = m.optJSONObject("ratings")?.let { r -> r.keys().asSequence().associateWith { r.optDouble(it) }.filterValues { !it.isNaN() } } ?: emptyMap(),
         )
     }
 
@@ -295,6 +298,22 @@ object Api {
         }
     } catch (_: Exception) {
         emptyList()
+    }
+
+    // ---------- Trakt (per profile) ----------
+
+    suspend fun trakt(action: String, extra: JSONObject = JSONObject()): JSONObject? = try {
+        Net.postObj("$B/api/trakt", extra.put("action", action).put("profile", Prefs.profileId ?: ""))
+    } catch (_: Exception) {
+        null
+    }
+
+    suspend fun traktRows(): List<Row> {
+        val o = trakt("rows") ?: return emptyList()
+        return o.optJSONArray("rows").mapObjects { r ->
+            val items = r.optJSONArray("items").mapObjects(::parsePreview)
+            if (items.isEmpty()) null else Row(r.str("title") ?: "", items)
+        }
     }
 
     /** A timed part of an episode from IntroDB (community timestamps, no key needed). */

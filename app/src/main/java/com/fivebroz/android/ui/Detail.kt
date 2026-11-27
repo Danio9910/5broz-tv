@@ -341,6 +341,7 @@ private fun PhoneDetail(
                         Meta(listOf(d.base.year, d.runtime, if (m.seasons.size > 1) "${m.seasons.size} مواسم" else null))
                         d.certification?.let { CertBadge(it) }
                     }
+                    ratingsLine(d.ratings)?.let { Text(it, Modifier.padding(top = 4.dp), color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     VSpace(18.dp)
                     if (m.mainText != null && m.mainVideo != null) {
                         GoldButton(m.mainText, { play(m.mainVideo, m.mainLabel, null) }, Modifier.fillMaxWidth(), fill = true, icon = Icons.Play)
@@ -555,6 +556,7 @@ private fun TvDetail(
                         Meta(listOf(d.base.year, d.runtime, d.genres.take(3).joinToString("، ").takeIf { it.isNotBlank() }))
                         d.certification?.let { CertBadge(it) }
                     }
+                    ratingsLine(d.ratings)?.let { Text(it, Modifier.padding(top = 4.dp), color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     if (!d.base.description.isNullOrBlank()) {
                         VSpace(12.dp)
                         Text(d.base.description, style = MaterialTheme.typography.bodyLarge, color = C.Paper.copy(alpha = 0.86f), maxLines = 4, overflow = TextOverflow.Ellipsis)
@@ -619,6 +621,23 @@ private fun TvDetail(
         }
         }
     }
+}
+
+/** "Rotten Tomatoes 91% · Metacritic 80 · Letterboxd 4.2" when MDBList is set up. */
+private fun ratingsLine(r: Map<String, Double>): String? {
+    if (r.isEmpty()) return null
+    val names = linkedMapOf("tomatoes" to "Rotten Tomatoes", "popcorn" to "الجمهور", "metacritic" to "Metacritic", "letterboxd" to "Letterboxd", "trakt" to "Trakt")
+    val parts = names.mapNotNull { (k, label) ->
+        r[k]?.let { v ->
+            val shown = when (k) {
+                "tomatoes", "popcorn", "trakt" -> "${v.toInt()}%"
+                "letterboxd" -> "%.1f".format(java.util.Locale.US, v)
+                else -> v.toInt().toString()
+            }
+            "$label $shown"
+        }
+    }
+    return parts.joinToString(" · ").ifBlank { null }
 }
 
 /** Highlights the episodes people rated highest (9+ on TMDB). */
