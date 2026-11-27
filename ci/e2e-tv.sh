@@ -46,9 +46,11 @@ for T in movie/tt15239678 series/tt0903747 movie/tt1375666; do
   adb logcat -c
   adb shell am start -a android.intent.action.VIEW -d "fivebroz://title/$T" $PKG
   sleep 10; key DPAD_CENTER 1
-  for i in $(seq 1 45); do adb logcat -d -s 5broz:V | grep -q "PLAYER READY" && break; sleep 2; done
+  # Only this run's process counts (logcat can still hold the previous title's lines).
+  P=$(adb shell pidof $PKG | tr -d '\r')
+  for i in $(seq 1 45); do adb logcat -d -s 5broz:V | grep " $P " | grep -q "PLAYER READY" && break; sleep 2; done
   N=$(echo $T | tr / -); shot tv8-$N
-  adb logcat -d -s 5broz:V System.out:I | grep -E "TIMING|PLAYER READY|race|player error|autosync|introdb|frame rate|5broz-engine|STALL" | sed "s|^|$T |" >> $OUT/timing.txt
+  adb logcat -d -s 5broz:V System.out:I | grep " $P " | grep -E "TIMING|PLAYER READY|race|player error|autosync|introdb|frame rate|5broz-engine|STALL" | sed "s|^|$T |" >> $OUT/timing.txt
 done
 echo end >> $OUT/timing.txt
 adb logcat -d -s 5broz:V AndroidRuntime:E > $OUT/logcat.txt; echo "--- end ---" >> $OUT/logcat.txt
