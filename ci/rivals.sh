@@ -50,21 +50,33 @@ for spec in $APKS; do
   echo "activity $ACT"
 
   # 1) cold start
-  T1=$(adb shell am start -W -n "$ACT" | grep -E "TotalTime" | grep -o '[0-9]*')
+  adb logcat -c
+  T1=$(adb shell am start -W -n "$ACT" | tee -a $OUT/$NAME-start.txt | grep -E "TotalTime" | grep -o '[0-9]*')
   echo "$NAME cold start (first frame): ${T1} ms" | tee -a $R
   sleep 1; shot $NAME-01-1s
   sleep 2; shot $NAME-02-3s
   sleep 4; shot $NAME-03-7s
 
-  # 2) first-run screens: how many taps before the catalogue shows
+  adb logcat -d -b crash > $OUT/$NAME-crash.txt 2>&1
+  # 2) first-run screens: how many steps before the catalogue shows
   steps=0
-  for i in 1 2 3 4 5 6; do
-    if tap_any "Skip" "SKIP" "Guest" "guest" "Continue without" "Get started" "Get Started" "Let's go" "Next" "NEXT" "Later" "Not now" "Allow" "ALLOW" "Accept" "I agree" "Continue" "Done" "Start" "Browse" "Maybe later" "No thanks" "Close" "Dismiss" "OK"; then
-      steps=$((steps+1)); sleep 3; shot $NAME-04-onboard-$i
-    else
-      break
-    fi
-  done
+  if [ "$MODE" = tv ] && [ "$NAME" != 5broz ]; then
+    # TV apps ignore touches: walk the first-run screens with the remote, photographing each.
+    for k in DPAD_RIGHT DPAD_CENTER DPAD_CENTER DPAD_CENTER DPAD_DOWN DPAD_CENTER DPAD_CENTER; do
+      dump; cp /tmp/ui.xml $OUT/$NAME-onboard-$steps.xml
+      key $k 3
+      steps=$((steps+1)); shot $NAME-04-onboard-$steps
+    done
+  else
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+      dump; cp /tmp/ui.xml $OUT/$NAME-onboard-$i.xml
+      if tap_any "Continue Without Account" "Continue without account" "Continue without" "Skip" "SKIP" "Guest" "guest" "Get started" "Get Started" "Let's go" "Essential" "Manage Profiles" "Add Profile" "Add profile" "Create" "Save" "Next" "NEXT" "Later" "Not now" "Allow" "ALLOW" "Accept" "I agree" "Continue" "Done" "Start" "Browse" "Maybe later" "No thanks" "Close" "Dismiss" "OK"; then
+        steps=$((steps+1)); sleep 3; shot $NAME-04-onboard-$i
+      else
+        break
+      fi
+    done
+  fi
   echo "$NAME first-run screens tapped through: $steps" | tee -a $R
   sleep 8; shot $NAME-05-home
   dump; cp /tmp/ui.xml $OUT/$NAME-home.xml
@@ -72,7 +84,9 @@ for spec in $APKS; do
   # 3) scrolling / moving through the catalogue: frame times
   adb shell dumpsys gfxinfo $P reset > /dev/null
   if [ "$MODE" = tv ]; then
-    for i in 1 2 3 4 5 6; do key DPAD_RIGHT 0.6; done
+    # along a row (Arabic apps run right-to-left), then down the rows
+    ALONG=DPAD_RIGHT; [ "$NAME" = 5broz ] && ALONG=DPAD_LEFT
+    for i in 1 2 3 4 5 6; do key $ALONG 0.6; done
     for i in 1 2 3 4; do key DPAD_DOWN 0.8; done
   else
     for i in 1 2 3 4 5 6; do adb shell input swipe $((W/2)) $((H*3/4)) $((W/2)) $((H/4)) 250; sleep 0.8; done
