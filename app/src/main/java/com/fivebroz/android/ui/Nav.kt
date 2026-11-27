@@ -70,6 +70,13 @@ fun NavHostController.openTitle(p: Preview) = navigate("title/${p.type}/${enc(p.
 @Composable
 fun AppNav() {
     val nav = rememberNavController()
+    // which screen the frame counter attributes frames to
+    androidx.compose.runtime.LaunchedEffect(nav) {
+        nav.currentBackStackEntryFlow.collect { e ->
+            val r = e.destination.route?.substringBefore('/') ?: "?"
+            com.fivebroz.android.Perf.screen = if (r == "main") com.fivebroz.android.Perf.tab else r
+        }
+    }
     val start = when {
         !Prefs.gatePassed -> "gate"
         Prefs.profileId == null -> "profiles"
@@ -226,6 +233,10 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
     }
 
     val pages: @Composable (Tab) -> Unit = { t ->
+        androidx.compose.runtime.SideEffect {
+            com.fivebroz.android.Perf.tab = t.name.lowercase()
+            com.fivebroz.android.Perf.screen = t.name.lowercase()
+        }
         when (t) {
             Tab.Home -> HomeScreen(onOpen) { menu = true }
             Tab.Search -> SearchScreen(onOpen)

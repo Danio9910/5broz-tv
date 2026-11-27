@@ -59,11 +59,19 @@ class FiveBrozApp : Application() {
                 started = (started - 1).coerceAtLeast(0)
                 if (started == 0) loop?.cancel()
             }
-            override fun onActivityResumed(a: Activity) { top = a }
-            override fun onActivityPaused(a: Activity) { if (top === a) top = null }
+            override fun onActivityResumed(a: Activity) {
+                top = a
+                Perf.track(a)
+                if (a is MainActivity && Perf.screen == "player") Perf.screen = Perf.tab
+            }
+            override fun onActivityPaused(a: Activity) {
+                if (top === a) top = null
+                // send the smoothness summary when the app leaves the screen
+                if (!a.isChangingConfigurations) scope.launch { Perf.flush(a, isTv) }
+            }
             override fun onActivityCreated(a: Activity, b: Bundle?) {}
             override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
-            override fun onActivityDestroyed(a: Activity) {}
+            override fun onActivityDestroyed(a: Activity) { Perf.untrack(a) }
         })
     }
 

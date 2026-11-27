@@ -119,5 +119,7 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.1")
     // installs the start-up profiles (ours and the libraries') on sideloaded installs too
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+    // real-device frame timing per screen (JankStats)
+    implementation("androidx.metrics:metrics-performance:1.0.0-beta01")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
 }

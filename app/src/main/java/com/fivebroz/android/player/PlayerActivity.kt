@@ -167,6 +167,11 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     private var autoPipFor: Boolean? = null
     private var volumeLevel = -1f
 
+    override fun onResume() {
+        super.onResume()
+        com.fivebroz.android.Perf.screen = "player"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Only one player at a time: a title opened while another sits in picture-in-picture replaces it.
