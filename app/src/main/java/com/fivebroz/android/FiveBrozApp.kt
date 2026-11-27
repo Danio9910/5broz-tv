@@ -50,6 +50,7 @@ class FiveBrozApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Prefs.init(this)
+        Crashes.install(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityStarted(a: Activity) {
                 started++
@@ -80,6 +81,7 @@ class FiveBrozApp : Application() {
         loop = scope.launch {
             // let the first screen draw before talking to the network
             delay(2500)
+            launch { Crashes.sendPending(this@FiveBrozApp, isTv) }
             var lastBeat = 0L
             while (isActive) {
                 val now = SystemClock.elapsedRealtime()
