@@ -262,6 +262,23 @@ object Api {
         (second?.let { "&u2=${enc(it)}" } ?: "") +
         (if (translate) "&tr=ar" else "")
 
+    /** A timed part of an episode from IntroDB (community timestamps, no key needed). */
+    data class Segment(val start: Double, val end: Double)
+    data class Segments(val intro: Segment?, val recap: Segment?, val outro: Segment?, val noIntro: Boolean)
+
+    suspend fun segments(videoId: String, isMovie: Boolean): Segments? = try {
+        val p = videoId.split(":")
+        val q = if (isMovie || p.size < 3) "imdb_id=${enc(p[0])}&is_movie=true" else "imdb_id=${enc(p[0])}&season=${p[1]}&episode=${p[2]}"
+        val o = Net.getObj("https://api.introdb.app/segments?$q")
+        fun seg(k: String) = o.optJSONObject(k)?.let { s ->
+            val a = s.optDouble("start_sec"); val b = s.optDouble("end_sec")
+            if (a.isNaN() || b.isNaN() || b <= a) null else Segment(a, b)
+        }
+        Segments(seg("intro"), seg("recap"), seg("outro"), o.optBoolean("no_intro"))
+    } catch (_: Exception) {
+        null
+    }
+
     data class Health(val ok: Boolean, val catalog: Boolean, val torrents: Boolean, val debridActive: Boolean, val daysLeft: Int?, val translate: Boolean = false)
 
     suspend fun health(): Health? = try {

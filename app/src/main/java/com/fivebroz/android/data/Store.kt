@@ -104,6 +104,14 @@ object Prefs {
     var subPos: Float
         get() = sp.getFloat(k("subPos"), 0.08f)
         set(v) = sp.edit().putFloat(k("subPos"), v).apply()
+    /** TV: switch the screen to the film's frame rate (smoother motion). */
+    var matchFrameRate: Boolean
+        get() = sp.getBoolean("matchFps", true)
+        set(v) = sp.edit().putBoolean("matchFps", v).apply()
+    var nightMode: Boolean
+        get() = sp.getBoolean(k("night"), false)
+        set(v) = sp.edit().putBoolean(k("night"), v).apply()
+
     /** Show English under the Arabic line. */
     var subSecond: Boolean
         get() = sp.getBoolean(k("subSecond"), false)

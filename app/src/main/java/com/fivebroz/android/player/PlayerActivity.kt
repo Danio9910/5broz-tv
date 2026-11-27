@@ -100,6 +100,7 @@ private sealed interface Overlay {
     data class Loading(val text: String) : Overlay
     data class Failed(val text: String) : Overlay
     data class Next(val label: String) : Overlay
+    data object StillWatching : Overlay
     data object None : Overlay
 }
 
@@ -216,8 +217,36 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                     ui.buffering = p.playbackState == Player.STATE_BUFFERING || p.playbackState == Player.STATE_IDLE
                     // No intro markers exist for torrents, so offer the skip in the opening minutes of an episode.
                     val sec = ui.position / 1000
-                    ui.showSkipIntro = args.type == "series" && !introSkipped && !ui.inPip && overlay is Overlay.None &&
-                        (partyId == null || isHost) && sec in 5..180 && ui.duration > 10 * 60_000
+                    val canSkip = !ui.inPip && overlay is Overlay.None && (partyId == null || isHost)
+                    val t = ui.position / 1000.0
+                    val seg = segments
+                    val recap = seg?.recap?.takeIf { t >= it.start && t < it.end - 1 && !recapSkipped }
+                    val intro = seg?.intro?.takeIf { t >= it.start && t < it.end - 1 && !introSkipped }
+                    when {
+                        canSkip && recap != null -> { ui.skipLabel = "تخطي الملخص"; ui.showSkipIntro = true }
+                        canSkip && intro != null -> { ui.skipLabel = "تخطي المقدمة"; ui.showSkipIntro = true }
+                        // No community timing for this episode: offer the old estimate in its first minutes.
+                        else -> {
+                            ui.skipLabel = "تخطي المقدمة"
+                            ui.showSkipIntro = canSkip && seg?.intro == null && seg?.noIntro != true && args.type == "series" &&
+                                !introSkipped && sec in 5..180 && ui.duration > 10 * 60_000
+                        }
+                    }
+                    // Credits rolling with another episode queued: offer it now, like Netflix.
+                    val outro = seg?.outro
+                    if (outro != null && !outroShown && args.queueIds.isNotEmpty() && overlay is Overlay.None && partyId == null &&
+                        t >= outro.start && ui.duration > 0 && t < ui.duration / 1000.0 - 5
+                    ) {
+                        outroShown = true
+                        showNext()
+                    }
+                    // Near the end: get the next episode's sources ready so it starts at once.
+                    if (!nextPrefetched && args.queueIds.isNotEmpty() && ui.duration > 0 &&
+                        (ui.position > ui.duration * 0.85 || (outro != null && t > outro.start - 90))
+                    ) {
+                        nextPrefetched = true
+                        StreamPrefetch.warm(this@PlayerActivity, args.type, args.queueIds[0])
+                    }
                     if (autoPipFor != ui.playing) {
                         autoPipFor = ui.playing
                         updatePipParams()
@@ -234,6 +263,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
 
     override fun poke() {
         ui.lastPoke = System.currentTimeMillis()
+        autoStreak = 0 // someone is there
     }
 
     private fun show() {
@@ -290,10 +320,134 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     }
 
     override fun skipIntro() {
-        introSkipped = true
         ui.showSkipIntro = false
         val p = player ?: return
-        seekTo(p.currentPosition + 85_000)
+        val t = p.currentPosition / 1000.0
+        val seg = segments
+        val recap = seg?.recap?.takeIf { t >= it.start && t < it.end }
+        val intro = seg?.intro?.takeIf { t >= it.start && t < it.end }
+        when {
+            recap != null -> { recapSkipped = true; seekTo((recap.end * 1000).toLong()) }
+            intro != null -> { introSkipped = true; seekTo((intro.end * 1000).toLong()) }
+            else -> { introSkipped = true; seekTo(p.currentPosition + 85_000) }
+        }
+    }
+
+    // ---- intro / recap / credits (IntroDB) and binge behaviour ----
+    private var segments: Api.Segments? = null
+    private var recapSkipped = false
+    private var outroShown = false
+    private var nextPrefetched = false
+    /** Episodes started automatically in a row with nobody touching anything. */
+    private var autoStreak = 0
+
+    override fun hold2x(on: Boolean) {
+        val p = player ?: return
+        ui.held2x = on
+        p.setPlaybackSpeed(if (on) 2f else ui.speed)
+    }
+
+    // Night mode: compress loud effects and lift dialogue (Android's dynamics processor).
+    private var dynamics: android.media.audiofx.DynamicsProcessing? = null
+
+    override fun setNightMode(on: Boolean) {
+        ui.nightMode = on
+        com.fivebroz.android.data.Prefs.nightMode = on
+        applyNightMode()
+    }
+
+    private fun applyNightMode() {
+        runCatching { dynamics?.release() }
+        dynamics = null
+        val p = player ?: return
+        if (!ui.nightMode || android.os.Build.VERSION.SDK_INT < 28 || p.audioSessionId == 0) return
+        runCatching {
+            val cfg = android.media.audiofx.DynamicsProcessing.Config.Builder(
+                android.media.audiofx.DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION, 2,
+                false, 0, true, 1, false, 0, true,
+            ).build()
+            val d = android.media.audiofx.DynamicsProcessing(0, p.audioSessionId, cfg)
+            for (ch in 0 until 2) {
+                val band = d.getMbcBandByChannelIndex(ch, 0)
+                band.threshold = -32f
+                band.ratio = 4f
+                band.attackTime = 3f
+                band.releaseTime = 120f
+                band.postGain = 10f
+                d.setMbcBandByChannelIndex(ch, 0, band)
+                val lim = d.getLimiterByChannelIndex(ch)
+                lim.threshold = -2f
+                d.setLimiterByChannelIndex(ch, lim)
+            }
+            d.enabled = true
+            dynamics = d
+        }
+    }
+
+    override fun openExternal() {
+        val url = currentUrl ?: return
+        player?.pause()
+        val i = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(url), "video/*")
+            .putExtra("title", args.name)
+            .putExtra("position", player?.currentPosition?.toInt() ?: 0)
+        try {
+            startActivity(Intent.createChooser(i, "افتح في"))
+        } catch (_: Exception) {
+            flash("لا يوجد مشغّل فيديو آخر على هذا الجهاز")
+        }
+    }
+
+    /** "1080p · H.264 · 5.1" from what is actually playing. */
+    private fun updateBadges(p: Player) {
+        val v = (p as? ExoPlayer)?.videoFormat
+        val a = (p as? ExoPlayer)?.audioFormat
+        val res = v?.height?.takeIf { it > 0 }?.let { h ->
+            when {
+                h >= 2000 -> "4K"
+                h >= 1000 -> "1080p"
+                h >= 700 -> "720p"
+                else -> "${h}p"
+            }
+        }
+        val codec = when {
+            v?.sampleMimeType?.contains("hevc") == true -> "HEVC"
+            v?.sampleMimeType?.contains("avc") == true -> "H.264"
+            v?.sampleMimeType?.contains("av01") == true -> "AV1"
+            v?.sampleMimeType?.contains("vp9") == true -> "VP9"
+            else -> null
+        }
+        val ch = when (a?.channelCount) {
+            6 -> "5.1"
+            8 -> "7.1"
+            2 -> "ستيريو"
+            else -> null
+        }
+        ui.badges = listOfNotNull(res, codec, ch).joinToString(" · ").ifBlank { null }
+        v?.frameRate?.takeIf { it > 0 }?.let { matchFrameRate(it) }
+    }
+
+    /** TV: switch the display to a refresh rate that is a multiple of the film's (no judder). */
+    private var fpsSwitched = false
+    private fun matchFrameRate(fps: Float) {
+        if (!isTv || fpsSwitched || !com.fivebroz.android.data.Prefs.matchFrameRate) return
+        runCatching {
+            @Suppress("DEPRECATION")
+            val display = windowManager.defaultDisplay
+            val cur = display.mode
+            val best = display.supportedModes
+                .filter { it.physicalWidth == cur.physicalWidth && it.physicalHeight == cur.physicalHeight }
+                .minByOrNull { m ->
+                    val k = m.refreshRate / fps
+                    val mult = Math.round(k)
+                    if (mult < 1) 99f else kotlin.math.abs(k - mult) * 10 + (mult - 1) * 0.01f
+                } ?: return
+            val k = best.refreshRate / fps
+            if (kotlin.math.abs(k - Math.round(k)) < 0.01 && best.modeId != cur.modeId) {
+                window.attributes = window.attributes.apply { preferredDisplayModeId = best.modeId }
+                fpsSwitched = true
+                Log.i("5broz", "frame rate match: ${fps}fps -> ${best.refreshRate}Hz")
+            }
+        }
     }
 
     override fun setFill(fill: Boolean) {
@@ -631,6 +785,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
+                        updateBadges(p)
+                        if (ui.nightMode && dynamics == null) applyNightMode()
                         // A file whose audio this device can't decode plays silently — skip it.
                         val audio = tracks.groups.filter { it.type == MC.TRACK_TYPE_AUDIO }
                         val early = System.currentTimeMillis() - startedAt < 20_000
@@ -716,6 +872,18 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         launchedAt = System.currentTimeMillis()
         subOffset = com.fivebroz.android.data.Prefs.subDelay(args.videoId)
         syncedFor = null
+        segments = null
+        introSkipped = false
+        recapSkipped = false
+        outroShown = false
+        nextPrefetched = false
+        ui.nightMode = com.fivebroz.android.data.Prefs.nightMode
+        val vid = args.videoId
+        lifecycleScope.launch {
+            val s = Api.segments(vid, args.type != "series")
+            if (args.videoId == vid) segments = s
+            Log.i("5broz", "introdb $vid intro=${s?.intro} recap=${s?.recap} outro=${s?.outro}")
+        }
         lifecycleScope.launch { translateOk = Api.health()?.translate ?: false }
         lifecycleScope.launch {
             subsAsync = async { runCatching { Api.subtitles(args.type, args.videoId) }.getOrDefault(emptyList()) }
@@ -962,10 +1130,21 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             finish()
             return
         }
+        if (overlay !is Overlay.Next) showNext()
+    }
+
+    private fun showNext() {
+        // Three episodes in a row with nobody touching anything: check before carrying on.
+        if (autoStreak >= 3 && partyId == null) {
+            overlay = Overlay.StillWatching
+            player?.pause()
+            return
+        }
         overlay = Overlay.Next(args.queueLabels.firstOrNull() ?: "الحلقة التالية")
         nextJob?.cancel()
         nextJob = lifecycleScope.launch {
             delay(10_000)
+            autoStreak++
             playNext()
         }
     }
@@ -988,7 +1167,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     // ---------- remote / keys ----------
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (overlay is Overlay.Next || overlay is Overlay.Failed || ui.subsOpen || ui.chatOpen || ui.audioOpen || ui.speedOpen) {
+        if (overlay is Overlay.Next || overlay is Overlay.Failed || overlay is Overlay.StillWatching || ui.subsOpen || ui.chatOpen || ui.audioOpen || ui.speedOpen) {
             if ((ui.subsOpen || ui.chatOpen || ui.audioOpen || ui.speedOpen) && event.keyCode == KeyEvent.KEYCODE_BACK) {
                 if (event.action == KeyEvent.ACTION_UP) {
                     ui.subsOpen = false
@@ -1068,8 +1247,10 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         nextJob?.cancel()
         session?.release()
         session = null
+        runCatching { dynamics?.release() }
         player?.release()
         player = null
+        if (fpsSwitched) runCatching { window.attributes = window.attributes.apply { preferredDisplayModeId = 0 } }
         if (current?.get() === this) current = null
         super.onDestroy()
     }
@@ -1126,7 +1307,22 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                                 Text(o.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 VSpace(14.dp)
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    GoldButton("شغّل الآن", { playNext() }, focusRequester = fr)
+                                    GoldButton("شغّل الآن", { autoStreak = 0; playNext() }, focusRequester = fr)
+                                    GoldButton("إنهاء", { finish() }, filled = false)
+                                }
+                            }
+                        }
+                        Overlay.StillWatching -> {
+                            val fr = remember { FocusRequester() }
+                            LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
+                            Column(
+                                Modifier.align(Alignment.Center).background(C.Ink900.copy(alpha = 0.94f), RoundedCornerShape(18.dp)).padding(28.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text("هل ما زلت تشاهد؟", style = MaterialTheme.typography.titleLarge)
+                                VSpace(18.dp)
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    GoldButton("نعم، تابع", { autoStreak = 0; playNext() }, focusRequester = fr)
                                     GoldButton("إنهاء", { finish() }, filled = false)
                                 }
                             }

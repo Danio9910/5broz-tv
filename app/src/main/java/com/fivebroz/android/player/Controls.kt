@@ -86,6 +86,11 @@ class PlayerUi {
     /** Zoomed to fill the screen (pinch out) instead of letterboxed. */
     var fill by mutableStateOf(false)
     var showSkipIntro by mutableStateOf(false)
+    var skipLabel by mutableStateOf("تخطي المقدمة")
+    /** "1080p · H.264 · 5.1" for what's playing. */
+    var badges by mutableStateOf<String?>(null)
+    var nightMode by mutableStateOf(false)
+    var held2x by mutableStateOf(false)
     /** Brightness / volume swipe feedback: which one, and level 0..1. */
     var gesture by mutableStateOf<Pair<androidx.compose.ui.graphics.vector.ImageVector, Float>?>(null)
     var chatOpen by mutableStateOf(false)
@@ -127,6 +132,9 @@ interface PlayerActions {
     /** Swipe on the left/right half: brightness / volume. Returns the new level 0..1. */
     fun adjustBrightness(delta: Float): Float
     fun adjustVolume(delta: Float): Float
+    fun hold2x(on: Boolean)
+    fun setNightMode(on: Boolean)
+    fun openExternal()
 }
 
 private fun fmt(ms: Long): String {
@@ -157,6 +165,12 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
                             // Physical sides: left goes back, right goes forward.
                             if (o.x < size.width / 2f) a.seekBy(-10) else a.seekBy(10)
                         },
+                        // Hold anywhere: 2× while the finger stays down (like Nuvio / YouTube).
+                        onLongPress = { a.hold2x(true) },
+                        onPress = {
+                            tryAwaitRelease()
+                            if (ui.held2x) a.hold2x(false)
+                        },
                     )
                 },
             ),
@@ -175,6 +189,15 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
         }
 
         ui.gesture?.let { (icon, level) -> GestureHud(icon, level) }
+        if (ui.held2x) {
+            Text(
+                "2× ▶▶",
+                Modifier.align(Alignment.TopCenter).padding(top = 36.dp)
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50)).padding(horizontal = 16.dp, vertical = 8.dp),
+                color = C.Paper,
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
 
         AnimatedVisibility(ui.visible, enter = fadeIn(tween(160)), exit = fadeOut(tween(220))) {
             Box(Modifier.fillMaxSize()) {
@@ -199,7 +222,10 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
                         }
                     }
                     Spacer(Modifier.width(12.dp))
-                    Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Column(Modifier.weight(1f)) {
+                        Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        ui.badges?.let { Text(it, color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1) }
+                    }
                     if (!isTv) {
                         TopIcon(com.fivebroz.android.ui.Icons.Expand, ui.fill) { a.setFill(!ui.fill) }
                         if (a.canPip) {
@@ -243,6 +269,7 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
                                 Pill("الصوت", I.Audio) { ui.audioOpen = true }
                                 if (!a.inParty) Pill(if (ui.speed == 1f) "السرعة" else speedLabel(ui.speed), I.Speed) { ui.speedOpen = true }
                                 Pill("مصدر آخر", I.Sources) { a.otherSource() }
+                                if (!isTv) Pill("مشغّل خارجي", I.Expand) { a.openExternal() }
                                 if (a.hasNextEpisode && (!a.inParty || a.partyIsHost)) Pill("الحلقة التالية", I.Next) { a.nextEpisode() }
                                 Pill(if (a.inParty) "الغرفة ${ui.partyCode}" else "غرفة مشاهدة", I.Party) { a.startParty() }
                             }
@@ -279,7 +306,7 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         val fg = if (f || isTv) C.Ink950 else C.Paper
-                        Text("تخطي المقدمة", color = fg, style = MaterialTheme.typography.labelLarge)
+                        Text(ui.skipLabel, color = fg, style = MaterialTheme.typography.labelLarge)
                         com.fivebroz.android.ui.Ic(com.fivebroz.android.ui.Icons.SkipIntro, 16.dp, fg)
                     }
                 }
@@ -659,6 +686,10 @@ private fun AudioPanel(ui: PlayerUi, a: PlayerActions) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("الصوت", style = MaterialTheme.typography.titleLarge)
+            VSpace(6.dp)
+            Pill(if (ui.nightMode) "✓ الوضع الليلي (يرفع الكلام ويخفّض الانفجارات)" else "الوضع الليلي (يرفع الكلام ويخفّض الانفجارات)") {
+                a.setNightMode(!ui.nightMode)
+            }
             VSpace(6.dp)
             if (options.isEmpty()) Text("هذا الملف فيه مسار صوت واحد.", color = C.Muted, style = MaterialTheme.typography.bodyMedium)
             options.forEachIndexed { i, o ->
