@@ -583,7 +583,7 @@ private fun TvDetail(
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides MinimalScroll) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 60.dp)) {
             item("head") {
-                Column(Modifier.fillMaxWidth(0.55f).padding(start = g, top = 70.dp, bottom = 26.dp)) {
+                Column(Modifier.fillMaxWidth(0.66f).padding(start = g, top = 70.dp, bottom = 26.dp)) {
                     TitleArt(d.base.name, d.base.logo, 120.dp, 420.dp, MaterialTheme.typography.displayLarge)
                     VSpace(10.dp)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
