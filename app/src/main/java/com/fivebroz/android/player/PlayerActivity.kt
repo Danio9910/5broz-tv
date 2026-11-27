@@ -58,6 +58,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
@@ -108,6 +109,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     companion object {
         /** A source chosen by hand in the sources panel (handed over in-process). */
         var pendingPick: Stream? = null
+        private var current: java.lang.ref.WeakReference<PlayerActivity>? = null
 
         fun start(ctx: Context, a: PlayArgs) {
             ctx.startActivity(
@@ -151,9 +153,17 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     private var startedAt = 0L
     private var saveJob: Job? = null
     private var nextJob: Job? = null
+    private var session: androidx.media3.session.MediaSession? = null
+    private var introSkipped = false
+    private var wasInPip = false
+    private var autoPipFor: Boolean? = null
+    private var volumeLevel = -1f
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Only one player at a time: a title opened while another sits in picture-in-picture replaces it.
+        current?.get()?.takeIf { it !== this }?.finish()
+        current = java.lang.ref.WeakReference(this)
         val i = intent
         args = PlayArgs(
             type = i.getStringExtra("type") ?: "movie",
@@ -214,8 +224,16 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                     ui.buffered = p.bufferedPosition
                     ui.playing = p.isPlaying
                     ui.buffering = p.playbackState == Player.STATE_BUFFERING || p.playbackState == Player.STATE_IDLE
+                    // No intro markers exist for torrents, so offer the skip in the opening minutes of an episode.
+                    val sec = ui.position / 1000
+                    ui.showSkipIntro = args.type == "series" && !introSkipped && !ui.inPip && overlay is Overlay.None &&
+                        (partyId == null || isHost) && sec in 5..180 && ui.duration > 10 * 60_000
+                    if (autoPipFor != ui.playing) {
+                        autoPipFor = ui.playing
+                        updatePipParams()
+                    }
                 }
-                if (ui.visible && ui.playing && !ui.subsOpen && System.currentTimeMillis() - ui.lastPoke > 4500) {
+                if (ui.visible && ui.playing && !ui.subsOpen && !ui.speedOpen && !ui.audioOpen && System.currentTimeMillis() - ui.lastPoke > 4500) {
                     ui.visible = false
                 }
             }
@@ -262,6 +280,118 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     }
 
     override fun back() = finish()
+
+    override fun finish() {
+        // Expanded from picture-in-picture, the player lives in its own task: go back to the app, not the launcher.
+        if (wasInPip) {
+            runCatching {
+                startActivity(Intent(this, com.fivebroz.android.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+            }
+        }
+        super.finish()
+    }
+
+    // ---------- speed, zoom, intro, gestures ----------
+
+    override fun setSpeed(speed: Float) {
+        ui.speed = speed
+        player?.setPlaybackSpeed(speed)
+        poke()
+    }
+
+    override fun skipIntro() {
+        introSkipped = true
+        ui.showSkipIntro = false
+        val p = player ?: return
+        seekTo(p.currentPosition + 85_000)
+    }
+
+    override fun setFill(fill: Boolean) {
+        ui.fill = fill
+        playerView.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+        ui.flash = if (fill) "ملء الشاشة" else "الحجم الأصلي"
+        flashJob?.cancel()
+        flashJob = lifecycleScope.launch { delay(800); ui.flash = null }
+        poke()
+    }
+
+    override fun adjustBrightness(delta: Float): Float {
+        val lp = window.attributes
+        var cur = lp.screenBrightness
+        if (cur < 0) {
+            cur = runCatching {
+                android.provider.Settings.System.getInt(contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS) / 255f
+            }.getOrDefault(0.5f)
+        }
+        val next = (cur + delta).coerceIn(0.01f, 1f)
+        lp.screenBrightness = next
+        window.attributes = lp
+        return next
+    }
+
+    override fun adjustVolume(delta: Float): Float {
+        val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        if (volumeLevel < 0) volumeLevel = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) / max.toFloat()
+        volumeLevel = (volumeLevel + delta).coerceIn(0f, 1f)
+        val steps = Math.round(volumeLevel * max)
+        if (steps != am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)) {
+            runCatching { am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, steps, 0) }
+        }
+        return volumeLevel
+    }
+
+    // ---------- picture-in-picture ----------
+
+    override val canPip: Boolean
+        get() = !isTv && android.os.Build.VERSION.SDK_INT >= 26 &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    @androidx.annotation.RequiresApi(26)
+    private fun pipParams(): android.app.PictureInPictureParams {
+        val v = player?.videoSize
+        val w = v?.width?.takeIf { it > 0 } ?: 16
+        val h = v?.height?.takeIf { it > 0 } ?: 9
+        // Android only accepts ratios between 1:2.39 and 2.39:1.
+        val r = (w.toFloat() / h).coerceIn(1 / 2.3f, 2.3f)
+        val b = android.app.PictureInPictureParams.Builder()
+            .setAspectRatio(android.util.Rational((r * 1000).toInt(), 1000))
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            // Swiping home while a video plays slides it into a small window, like YouTube.
+            b.setAutoEnterEnabled(ui.playing).setSeamlessResizeEnabled(true)
+        }
+        return b.build()
+    }
+
+    private fun updatePipParams() {
+        if (!canPip) return
+        runCatching { setPictureInPictureParams(pipParams()) }
+    }
+
+    override fun enterPip() {
+        if (!canPip) return
+        ui.visible = false
+        runCatching { enterPictureInPictureMode(pipParams()) }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Android 12+ enters on its own (auto-enter); older versions need the nudge.
+        if (android.os.Build.VERSION.SDK_INT < 31 && canPip && player?.isPlaying == true && overlay is Overlay.None) enterPip()
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        ui.inPip = isInPictureInPictureMode
+        if (isInPictureInPictureMode) {
+            wasInPip = true
+            ui.visible = false
+            ui.subsOpen = false
+            ui.audioOpen = false
+            ui.speedOpen = false
+            ui.chatOpen = false
+        }
+    }
 
     override fun subtitleOptions(): List<SubOption> {
         val p = player ?: return emptyList()
@@ -594,6 +724,13 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         val p = buildPlayer()
         player = p
         playerView.player = p
+        p.setPlaybackSpeed(ui.speed)
+        // Headset, Bluetooth and remote media keys, and the system media controls, drive this player.
+        runCatching {
+            val s = session
+            if (s == null) session = androidx.media3.session.MediaSession.Builder(this, p).setId("5broz-player").build()
+            else s.player = p
+        }
         currentUrl = url
         p.setMediaItem(buildItem(url))
         if (positionSec > 30) p.seekTo(positionSec * 1000)
@@ -601,6 +738,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         p.prepare()
         startedAt = System.currentTimeMillis()
         skipped = false
+        if (positionSec < 5) introSkipped = false
         startSaving()
     }
 
@@ -669,12 +807,13 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     // ---------- remote / keys ----------
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (overlay is Overlay.Next || overlay is Overlay.Failed || ui.subsOpen || ui.chatOpen || ui.audioOpen) {
-            if ((ui.subsOpen || ui.chatOpen || ui.audioOpen) && event.keyCode == KeyEvent.KEYCODE_BACK) {
+        if (overlay is Overlay.Next || overlay is Overlay.Failed || ui.subsOpen || ui.chatOpen || ui.audioOpen || ui.speedOpen) {
+            if ((ui.subsOpen || ui.chatOpen || ui.audioOpen || ui.speedOpen) && event.keyCode == KeyEvent.KEYCODE_BACK) {
                 if (event.action == KeyEvent.ACTION_UP) {
                     ui.subsOpen = false
                     ui.chatOpen = false
                     ui.audioOpen = false
+                    ui.speedOpen = false
                 }
                 return true
             }
@@ -703,7 +842,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                 KeyEvent.KEYCODE_DPAD_LEFT -> { if (down) seekBy(-10); return true }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> { if (down) seekBy(10); return true }
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                    if (down) { togglePlay(); show() }
+                    // During an episode's opening, OK means "skip intro" (the button is highlighted on screen).
+                    if (down) { if (ui.showSkipIntro) skipIntro() else { togglePlay(); show() } }
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_MENU -> {
@@ -723,14 +863,24 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         if (!isInPictureInPictureMode) player?.pause()
     }
 
+    override fun onStop() {
+        super.onStop()
+        // Leaving the app, or closing the picture-in-picture window, stops the film.
+        saveNow()
+        player?.pause()
+    }
+
     override fun onDestroy() {
         torrentJob?.cancel()
         partyJob?.cancel()
         Thread { engine.close() }.start()
         saveJob?.cancel()
         nextJob?.cancel()
+        session?.release()
+        session = null
         player?.release()
         player = null
+        if (current?.get() === this) current = null
         super.onDestroy()
     }
 
@@ -742,6 +892,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             FiveBrozTheme {
                 Box(Modifier.fillMaxSize()) {
                     val title = if (args.label.isNotBlank()) "${args.name} — ${args.label}" else args.name
+                    // In picture-in-picture only the picture (and its subtitles) shows.
+                    if (ui.inPip) return@Box
                     if (overlay is Overlay.None) PlayerControls(ui, title, isTv, this@PlayerActivity)
                     if (overlay !is Overlay.None) {
                         Box(

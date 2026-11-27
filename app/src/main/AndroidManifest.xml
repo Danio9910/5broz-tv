@@ -33,6 +33,8 @@
         <activity
             android:name=".player.PlayerActivity"
             android:exported="false"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.FiveBroz.Player" />

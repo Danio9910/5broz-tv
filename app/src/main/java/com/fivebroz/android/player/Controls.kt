@@ -58,6 +58,13 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import com.fivebroz.android.ui.C
 import com.fivebroz.android.ui.Focusable
 import com.fivebroz.android.ui.VSpace
@@ -73,6 +80,14 @@ class PlayerUi {
     var flash by mutableStateOf<String?>(null)
     var subsOpen by mutableStateOf(false)
     var audioOpen by mutableStateOf(false)
+    var speedOpen by mutableStateOf(false)
+    var speed by mutableFloatStateOf(1f)
+    var inPip by mutableStateOf(false)
+    /** Zoomed to fill the screen (pinch out) instead of letterboxed. */
+    var fill by mutableStateOf(false)
+    var showSkipIntro by mutableStateOf(false)
+    /** Brightness / volume swipe feedback: which one, and level 0..1. */
+    var gesture by mutableStateOf<Pair<androidx.compose.ui.graphics.vector.ImageVector, Float>?>(null)
     var chatOpen by mutableStateOf(false)
     var partyCode by mutableStateOf("")
     var bubble by mutableStateOf<String?>(null)
@@ -100,6 +115,14 @@ interface PlayerActions {
     val partyIsHost: Boolean
     fun startParty()
     fun sendChat(text: String)
+    fun setSpeed(speed: Float)
+    fun skipIntro()
+    fun setFill(fill: Boolean)
+    val canPip: Boolean
+    fun enterPip()
+    /** Swipe on the left/right half: brightness / volume. Returns the new level 0..1. */
+    fun adjustBrightness(delta: Float): Float
+    fun adjustVolume(delta: Float): Float
 }
 
 private fun fmt(ms: Long): String {
@@ -120,7 +143,7 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
         Modifier
             .fillMaxSize()
             .then(
-                if (isTv) Modifier else Modifier.pointerInput(Unit) {
+                if (isTv) Modifier else Modifier.playerGestures(ui, a).pointerInput(Unit) {
                     detectTapGestures(
                         onTap = {
                             ui.visible = !ui.visible
@@ -147,6 +170,8 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
             )
         }
 
+        ui.gesture?.let { (icon, level) -> GestureHud(icon, level) }
+
         AnimatedVisibility(ui.visible, enter = fadeIn(tween(160)), exit = fadeOut(tween(220))) {
             Box(Modifier.fillMaxSize()) {
                 Box(
@@ -170,7 +195,14 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
                         }
                     }
                     Spacer(Modifier.width(12.dp))
-                    Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (!isTv) {
+                        TopIcon(com.fivebroz.android.ui.Icons.Expand, ui.fill) { a.setFill(!ui.fill) }
+                        if (a.canPip) {
+                            Spacer(Modifier.width(6.dp))
+                            TopIcon(com.fivebroz.android.ui.Icons.Pip, false) { a.enterPip() }
+                        }
+                    }
                 }
 
                 // Transport — always left-to-right, like the timeline it controls.
@@ -197,10 +229,15 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
                         Scrubber(ui, a)
                         VSpace(14.dp)
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 val I = com.fivebroz.android.ui.Icons
                                 Pill("الترجمة", I.Subtitles) { ui.subsOpen = true }
                                 Pill("الصوت", I.Audio) { ui.audioOpen = true }
+                                if (!a.inParty) Pill(if (ui.speed == 1f) "السرعة" else speedLabel(ui.speed), I.Speed) { ui.speedOpen = true }
                                 Pill("مصدر آخر", I.Sources) { a.otherSource() }
                                 if (a.hasNextEpisode && (!a.inParty || a.partyIsHost)) Pill("الحلقة التالية", I.Next) { a.nextEpisode() }
                                 Pill(if (a.inParty) "الغرفة ${ui.partyCode}" else "غرفة مشاهدة", I.Party) { a.startParty() }
@@ -225,7 +262,137 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
         }
         if (ui.subsOpen) SubtitlePanel(ui, a)
         if (ui.audioOpen) AudioPanel(ui, a)
+        if (ui.speedOpen) SpeedPanel(ui, a)
+        // Above the controls so it stays reachable; on TV the OK key takes it while controls are hidden.
+        if (ui.showSkipIntro && !ui.subsOpen && !ui.audioOpen && !ui.speedOpen && !ui.chatOpen) {
+            Box(Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = if (ui.visible) 118.dp else 40.dp)) {
+                Focusable({ a.skipIntro() }, shape = RoundedCornerShape(10.dp), lift = 1.05f, ring = false) { f ->
+                    Row(
+                        Modifier.background(if (f || isTv) C.Paper else Color.Black.copy(alpha = 0.6f))
+                            .border(1.dp, C.Paper.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        val fg = if (f || isTv) C.Ink950 else C.Paper
+                        Text("تخطي المقدمة", color = fg, style = MaterialTheme.typography.labelLarge)
+                        com.fivebroz.android.ui.Ic(com.fivebroz.android.ui.Icons.SkipIntro, 16.dp, fg)
+                    }
+                }
+            }
+        }
         if (ui.chatOpen) ChatPanel(ui, a)
+    }
+}
+
+@Composable
+private fun TopIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, onClick: () -> Unit) {
+    Focusable(onClick, shape = CircleShape, lift = 1.08f, ring = false) { f ->
+        Box(
+            Modifier.size(40.dp).background(if (f) C.Paper else if (on) Color.White.copy(alpha = 0.18f) else Color.Transparent),
+            contentAlignment = Alignment.Center,
+        ) { com.fivebroz.android.ui.Ic(icon, 20.dp, if (f) C.Ink950 else C.Paper) }
+    }
+}
+
+fun speedLabel(s: Float): String =
+    if (s == 1f) "عادية" else (if (s % 1f == 0f) "%.0f".format(java.util.Locale.US, s) else "%s".format(java.util.Locale.US, s.toString().trimEnd('0'))) + "×"
+
+/**
+ * Touch gestures beyond tap: vertical swipe on the left half = brightness,
+ * right half = volume (physical sides), pinch = fill/fit.
+ */
+private fun Modifier.playerGestures(ui: PlayerUi, a: PlayerActions): Modifier = this
+    .pointerInput(Unit) {
+        // Pinch: two fingers apart = fill the screen, together = fit.
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            var zoom = 1f
+            do {
+                val e = awaitPointerEvent()
+                if (e.changes.count { it.pressed } >= 2) {
+                    zoom *= e.calculateZoom()
+                    if (zoom > 1.15f && !ui.fill) { a.setFill(true); zoom = 1f }
+                    if (zoom < 0.87f && ui.fill) { a.setFill(false); zoom = 1f }
+                    e.changes.forEach { it.consume() }
+                }
+            } while (e.changes.any { it.pressed })
+        }
+    }
+    .pointerInput(Unit) {
+        var left = false
+        var hideJob: kotlinx.coroutines.Job? = null
+        coroutineScope {
+            detectVerticalDragGestures(
+                onDragStart = { o ->
+                    left = o.x < size.width / 2f
+                    hideJob?.cancel()
+                },
+                onDragEnd = {
+                    hideJob = launch { kotlinx.coroutines.delay(700); ui.gesture = null }
+                },
+                onDragCancel = { ui.gesture = null },
+            ) { change, dy ->
+                if (ui.subsOpen || ui.audioOpen || ui.speedOpen || ui.chatOpen) return@detectVerticalDragGestures
+                change.consume()
+                // A full-height swipe moves the level by ~120%.
+                val delta = -dy / size.height * 1.2f
+                ui.gesture = if (left) {
+                    com.fivebroz.android.ui.Icons.Brightness to a.adjustBrightness(delta)
+                } else {
+                    com.fivebroz.android.ui.Icons.Volume to a.adjustVolume(delta)
+                }
+            }
+        }
+    }
+
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.GestureHud(icon: androidx.compose.ui.graphics.vector.ImageVector, level: Float) {
+    Row(
+        Modifier.align(Alignment.TopCenter).padding(top = 36.dp)
+            .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50)).padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        com.fivebroz.android.ui.Ic(icon, 20.dp, C.Paper)
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Box(Modifier.width(140.dp).height(4.dp).background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(2.dp))) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth(level.coerceIn(0f, 1f)).background(C.Paper, RoundedCornerShape(2.dp)))
+            }
+        }
+        Text("${(level.coerceIn(0f, 1f) * 100).toInt()}%", color = C.Paper, style = MaterialTheme.typography.labelLarge, modifier = Modifier.widthIn(min = 40.dp))
+    }
+}
+
+/** Playback speed, 0.5× – 2×. */
+@Composable
+private fun SpeedPanel(ui: PlayerUi, a: PlayerActions) {
+    val speeds = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f))
+            .pointerInput(Unit) { detectTapGestures { ui.speedOpen = false } },
+    ) {
+        Column(
+            Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(300.dp).background(C.Ink900)
+                .verticalScroll(rememberScrollState()).padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("سرعة التشغيل", style = MaterialTheme.typography.titleLarge)
+            VSpace(6.dp)
+            speeds.forEach { sp ->
+                val o = SubOption(speedLabel(sp), ui.speed == sp) { a.setSpeed(sp) }
+                Focusable(
+                    { o.select(); ui.speedOpen = false },
+                    Modifier.fillMaxWidth(),
+                    RoundedCornerShape(10.dp),
+                    lift = 1.02f,
+                    focusRequester = if (ui.speed == sp) first else null,
+                    ring = false,
+                ) { f -> OptionRow(o, f) }
+            }
+        }
     }
 }
 

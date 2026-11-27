@@ -31,6 +31,21 @@ tap_text() {
   [ -n "$xy" ] && adb shell input tap $xy
 }
 
+tap_avatar() {
+adb shell uiautomator dump /sdcard/ui.xml > /dev/null; adb pull /sdcard/ui.xml /tmp/ui.xml > /dev/null
+python3 - <<PY
+import re,subprocess,xml.etree.ElementTree as ET
+r=ET.parse("/tmp/ui.xml").getroot()
+# the profile avatar sits at the top corner of the header
+best=None
+for n in r.iter("node"):
+    b=list(map(int,re.findall(r"\d+",n.get("bounds"))))
+    if b[1] < 300 and b[0] < 200 and (b[2]-b[0]) < 200 and n.get("clickable")=="true":
+        best=b; break
+if best: subprocess.run(["adb","shell","input","tap",str((best[0]+best[2])//2),str((best[1]+best[3])//2)])
+PY
+}
+
 SIZE=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1); W=${SIZE%x*}; H=${SIZE#*x}
 echo "screen ${W}x${H}"
 adb logcat -c
@@ -73,22 +88,22 @@ adb shell input keyevent 4; sleep 2
 tap_text "الترجمة"
 sleep 2; shot 6c-subtitles
 adb shell input keyevent 4; sleep 1
+adb shell input tap $CX $CY; sleep 0.7
+tap_text "السرعة"
+sleep 2; shot 6d-speed
+tap_text "1.5×"; sleep 1
+adb shell input tap $CX $CY; sleep 1; shot 6e-speed-set
+# Picture-in-picture: resume, then go home — the film should shrink into a floating window.
+adb shell input keyevent 126; sleep 3
+adb shell input keyevent 3; sleep 5
+shot 6f-pip
+adb shell dumpsys activity activities | grep -iE "pinned|mode=pinned|windowingMode=2" | head -5 > $OUT/pip.txt; echo end >> $OUT/pip.txt
 # Profiles: open the picker, manage mode and the new-profile editor (nothing is saved).
 adb shell am force-stop $PKG; sleep 2
 adb shell am start -n $PKG/.MainActivity; sleep 12
-tap_text "تبديل" || true
-adb shell uiautomator dump /sdcard/ui.xml > /dev/null; adb pull /sdcard/ui.xml /tmp/ui.xml > /dev/null
-python3 - <<PY
-import re,subprocess,xml.etree.ElementTree as ET
-r=ET.parse("/tmp/ui.xml").getroot()
-# the profile avatar sits at the top corner of the header
-best=None
-for n in r.iter("node"):
-    b=list(map(int,re.findall(r"\d+",n.get("bounds"))))
-    if b[1] < 300 and b[0] < 200 and (b[2]-b[0]) < 200 and n.get("clickable")=="true":
-        best=b; break
-if best: subprocess.run(["adb","shell","input","tap",str((best[0]+best[2])//2),str((best[1]+best[3])//2)])
-PY
+tap_avatar
+sleep 3; shot 6g-profile-menu
+tap_text "تبديل الملف" || true
 sleep 8; shot 7-profiles
 tap_text "إدارة الملفات"
 sleep 2; shot 8-manage
@@ -102,6 +117,7 @@ adb shell am start -n $PKG/.MainActivity; sleep 12
 tap_text "الليلة"
 sleep 6; shot 10-tonight
 tap_text "الرئيسية"; sleep 3
+tap_avatar; sleep 2
 tap_text "انضمام لغرفة مشاهدة"; sleep 2; shot 11-join
 adb shell input text QATEST; sleep 1
 adb shell input keyevent 66

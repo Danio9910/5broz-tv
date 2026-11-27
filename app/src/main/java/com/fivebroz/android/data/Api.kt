@@ -149,7 +149,7 @@ object Api {
     }
 
     suspend fun logo(type: String, id: String): String? = try {
-        Net.getObj("$B/api/logo?type=${enc(type)}&id=${enc(id)}").str("logo")
+        Net.getObj("$B/api/detail?logo=1&type=${enc(type)}&id=${enc(id)}").str("logo")
     } catch (_: Exception) {
         null
     }
@@ -157,7 +157,7 @@ object Api {
     data class Person(val name: String, val photo: String?, val bio: String?, val born: String?, val works: List<Preview>)
 
     suspend fun person(id: String): Person? = try {
-        val o = Net.getObj("$B/api/person?id=${enc(id)}")
+        val o = Net.getObj("$B/api/detail?person=${enc(id)}")
         Person(o.optString("name"), o.str("photo"), o.str("bio"), o.str("born"), o.optJSONArray("works").mapObjects(::parsePreview))
     } catch (_: Exception) {
         null
