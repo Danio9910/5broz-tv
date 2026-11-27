@@ -37,6 +37,10 @@ object Prefs {
         recentSearches = listOf(t) + recentSearches.filter { !it.equals(t, ignoreCase = true) }
     }
 
+    var houseToken: String
+        get() = sp.getString("house", "") ?: ""
+        set(v) = sp.edit().putString("house", v).apply()
+
     var gatePassed: Boolean
         get() = sp.getBoolean("gate", false)
         set(v) = sp.edit().putBoolean("gate", v).apply()
@@ -207,7 +211,12 @@ object Db {
     const val KEY =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRuYXN3cGh2ZGllb2lmYWl1ZGh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM1NTc3MTksImV4cCI6MjEwOTEzMzcxOX0.e88g7l60jaYGJXmgavGtKq2zz8gUdr1K7DNP6AEynWs"
 
-    val headers = mapOf("apikey" to KEY, "Authorization" to "Bearer $KEY")
+    /** Every database request carries the household token (given by the server after the access code). */
+    val headers: Map<String, String>
+        get() = Prefs.houseToken.let { t ->
+            if (t.isBlank()) mapOf("apikey" to KEY, "Authorization" to "Bearer $KEY")
+            else mapOf("apikey" to KEY, "Authorization" to "Bearer $KEY", "x-house" to t)
+        }
 
     private fun q(s: String) = URLEncoder.encode(s, "UTF-8")
 

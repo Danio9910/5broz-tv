@@ -1,6 +1,8 @@
 package com.fivebroz.android
 
 import android.content.Intent
+import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -53,6 +55,17 @@ class MainActivity : ComponentActivity() {
             if (Prefs.profileId == null) { Prefs.profileId = "guest"; Prefs.profileName = "اختبار" }
         }
         takeRemoteLink(intent)
+        // Passed the access code before household tokens existed: once the server issues them,
+        // ask for the code one more time (the answer brings this device its token).
+        if (Prefs.gatePassed && Prefs.houseToken.isBlank() && !BuildConfig.BENCH) {
+            lifecycleScope.launch {
+                val h = com.fivebroz.android.data.Api.health()
+                if (h?.house == true && Prefs.houseToken.isBlank()) {
+                    Prefs.gatePassed = false
+                    recreate()
+                }
+            }
+        }
         if (intent?.data != null && (!Prefs.gatePassed || Prefs.profileId == null)) intent = intent.setData(null)
         // Phones browse upright like other streaming apps (the player rotates on its own).
         if (packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) &&

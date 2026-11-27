@@ -133,7 +133,7 @@ jobs:
           heap-size: 512M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: OUT=e2e-${{ matrix.device }} timeout 2400 ./ci/e2e.sh || true
+          script: OUT=e2e-${{ matrix.device }} ACCESS_CODE="${{ secrets.ACCESS_CODE }}" timeout 2400 ./ci/e2e.sh || true
       - name: Drop empty files
         if: always()
         run: find e2e-* -type f -size 0 -delete || true
@@ -173,7 +173,7 @@ jobs:
           profile: tv_1080p
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: ./ci/e2e-tv.sh
+          script: ACCESS_CODE="${{ secrets.ACCESS_CODE }}" ./ci/e2e-tv.sh
       - name: Publish TV screenshots
         if: always()
         uses: softprops/action-gh-release@v2

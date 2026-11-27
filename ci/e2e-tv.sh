@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Android TV emulator: drive the app with the remote's arrow keys, with screenshots.
 PKG=com.fivebroz.android
+# Household token for the database (from the access code kept as a GitHub secret); empty if not set.
+HOUSE=""
+if [ -n "$ACCESS_CODE" ]; then
+  HOUSE=$(curl -s -X POST https://www.5broz.com/api/gate -H 'content-type: application/json' --data-binary "{\"code\":\"$ACCESS_CODE\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('house') or '')" 2>/dev/null)
+fi
 OUT=e2e-tv
 mkdir -p $OUT
 exec > >(tee $OUT/run.txt) 2>&1
@@ -10,6 +15,7 @@ cat > /tmp/5broz.xml <<XML
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
     <boolean name="gate" value="true" />
+    <string name="house">$HOUSE</string>
     <string name="pid">guest</string>
     <string name="pname">اختبار</string>
     <string name="test_addon">https://www.5broz.com/addon-test</string>
@@ -38,7 +44,8 @@ SUPA=https://tnaswphvdieoifaiudhz.supabase.co/rest/v1
 ANON=$(grep -o "eyJ[A-Za-z0-9._-]*" app/src/main/java/com/fivebroz/android/data/Store.kt | head -1)
 DEV=$(adb shell "run-as $PKG cat shared_prefs/5broz.xml" | grep -o 'name="device_id">[^<]*' | cut -d'>' -f2 | tr -d '\r')
 echo "tv device id: $DEV" > $OUT/remote.txt
-sig() { curl -s -X POST "$SUPA/household_signals" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" -H "Content-Type: application/json" -d "[{\"to_device\":\"$DEV\",\"kind\":\"$1\",\"payload\":$2}]" >> $OUT/remote.txt; echo " sent $1 $2" >> $OUT/remote.txt; }
+# (tracing off inside, so the household token never reaches the published log)
+sig() { { set +x; } 2>/dev/null; curl -s -X POST "$SUPA/household_signals" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" -H "x-house: $HOUSE" -H "Content-Type: application/json" -d "[{\"to_device\":\"$DEV\",\"kind\":\"$1\",\"payload\":$2}]" >> $OUT/remote.txt; echo " sent $1 $2" >> $OUT/remote.txt; set -x; }
 if [ -n "$DEV" ]; then
   sig text '{"text":"Inception"}'; sleep 6; shot tv5b-remote-search
   sig key '{"key":"down"}'; sleep 2; sig key '{"key":"down"}'; sleep 3; shot tv5c-remote-keys

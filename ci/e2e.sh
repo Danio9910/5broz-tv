@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Walks through the app like a person: home -> title -> play (torrent), with screenshots.
 PKG=com.fivebroz.android
+# Household token for the database (from the access code kept as a GitHub secret); empty if not set.
+HOUSE=""
+if [ -n "$ACCESS_CODE" ]; then
+  HOUSE=$(curl -s -X POST https://www.5broz.com/api/gate -H 'content-type: application/json' --data-binary "{\"code\":\"$ACCESS_CODE\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('house') or '')" 2>/dev/null)
+fi
 OUT=${OUT:-e2e}
 mkdir -p $OUT
 exec > >(tee $OUT/run.txt) 2>&1
@@ -14,6 +19,7 @@ cat > /tmp/5broz.xml <<XML
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
     <boolean name="gate" value="true" />
+    <string name="house">$HOUSE</string>
     <string name="pid">guest</string>
     <string name="pname">اختبار</string>
     <string name="force_season">Ramadan</string>
@@ -172,6 +178,7 @@ cat > /tmp/5broz-upd.xml <<XML
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
     <boolean name="gate" value="true" />
+    <string name="house">$HOUSE</string>
     <string name="pid">guest</string>
     <string name="pname">اختبار</string>
     <boolean name="test_update" value="true" />

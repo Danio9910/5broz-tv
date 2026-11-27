@@ -111,7 +111,10 @@ object Api {
     private const val B = Net.SITE
 
     suspend fun checkCode(code: String): Boolean = try {
-        Net.postObj("$B/api/gate", JSONObject().put("code", code)).optBoolean("ok")
+        Net.postObj("$B/api/gate", JSONObject().put("code", code)).let { o ->
+            o.str("house")?.let { Prefs.houseToken = it }
+            o.optBoolean("ok")
+        }
     } catch (_: Exception) {
         false
     }
@@ -383,7 +386,7 @@ object Api {
         null
     }
 
-    data class Health(val ok: Boolean, val catalog: Boolean, val torrents: Boolean, val debridActive: Boolean, val daysLeft: Int?, val translate: Boolean = false)
+    data class Health(val ok: Boolean, val catalog: Boolean, val torrents: Boolean, val debridActive: Boolean, val daysLeft: Int?, val translate: Boolean = false, val house: Boolean = false)
 
     suspend fun health(): Health? = try {
         val o = Net.getObj("$B/api/health")
@@ -395,6 +398,7 @@ object Api {
             debridActive = d?.optBoolean("active", false) ?: false,
             daysLeft = d?.let { if (it.isNull("daysLeft")) null else it.optInt("daysLeft") },
             translate = o.optBoolean("translate", false),
+            house = o.optBoolean("house", false),
         )
     } catch (_: Exception) {
         null
