@@ -359,6 +359,7 @@ fun PosterRow(
             itemsIndexed(items, key = { i, it -> "${it.id}#$i" }) { i, it ->
                 val focus = onFocusItem?.let { f -> { f(it) } }
                 if (ranked) RankedPoster(i + 1, it, w, { onOpen(it) }, focus)
+                else if (com.fivebroz.android.data.Prefs.cardStyle == "wide") WideCard(it, w * 1.9f, { onOpen(it) }, progress = progress?.invoke(i), onFocus = focus)
                 else Poster(it, w, onClick = { onOpen(it) }, progress = progress?.invoke(i), onFocus = focus)
             }
         }

@@ -35,6 +35,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import com.fivebroz.android.data.Api
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -144,6 +146,7 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     var join by remember { mutableStateOf(false) }
     var addons by remember { mutableStateOf(false) }
+    var settings by remember { mutableStateOf(false) }
     // Back from another tab returns home first, like every streaming app.
     androidx.activity.compose.BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
 
@@ -161,12 +164,37 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
         }
     }
 
+    // TV screensaver after a few idle minutes (any key wakes it).
+    var lastKey by remember { mutableStateOf(System.currentTimeMillis()) }
+    var saving by remember { mutableStateOf(false) }
     if (isTv) {
-        Box(Modifier.fillMaxSize()) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            while (true) {
+                kotlinx.coroutines.delay(15_000)
+                if (Prefs.screensaver && !saving && System.currentTimeMillis() - lastKey > 4 * 60_000) saving = true
+            }
+        }
+    }
+    if (isTv) {
+        Box(
+            Modifier.fillMaxSize().onPreviewKeyEvent {
+                lastKey = System.currentTimeMillis()
+                if (saving) {
+                    saving = false
+                    true
+                } else {
+                    false
+                }
+            },
+        ) {
             Box(Modifier.fillMaxSize().padding(start = RAIL)) {
                 AnimatedContent(tab, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) }, label = "tab") { pages(it) }
             }
             TvRail(tab, { tab = it }, switchProfile)
+            if (saving) {
+                val items = remember { Api.cachedHome(Prefs.profileKids || Prefs.profileFamily)?.let { it.heroes + it.top10 + it.rows.flatMap { r -> r.items } } ?: emptyList() }
+                Screensaver(items)
+            }
         }
     } else {
         Column(Modifier.fillMaxSize()) {
@@ -183,6 +211,7 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
             onSwitch = { menu = false; switchProfile() },
             onJoin = { menu = false; join = true },
             onAddons = { menu = false; addons = true },
+            onSettings = { menu = false; settings = true },
         )
     }
     if (join) JoinPartyDialog { join = false }
@@ -191,6 +220,12 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
             onDismissRequest = { addons = false },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
         ) { AddonsScreen { addons = false } }
+    }
+    if (settings) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { settings = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) { SettingsScreen(onBack = { settings = false }, onAddons = { settings = false; addons = true }) }
     }
     if (askExitCode) {
         CodeDialog(
@@ -251,6 +286,16 @@ private fun TvRail(tab: Tab, onTab: (Tab) -> Unit, onProfile: () -> Unit) {
             Icon(Icons.Join, null, Modifier.size(22.dp), tint = it)
         }
         if (join) JoinPartyDialog { join = false }
+        var settings by remember { mutableStateOf(false) }
+        RailItem("الإعدادات", false, open, { settings = true }) {
+            Icon(Icons.Edit, null, Modifier.size(22.dp), tint = it)
+        }
+        if (settings) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { settings = false },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+            ) { SettingsScreen(onBack = { settings = false }, onAddons = { settings = false }) }
+        }
         if (!Prefs.profileKids) {
             var addons by remember { mutableStateOf(false) }
             RailItem("الإضافات", false, open, { addons = true }) {
@@ -344,7 +389,7 @@ private fun PhoneBottomBar(tab: Tab, onTab: (Tab) -> Unit) {
 /** Phone: tapping your avatar opens a small sheet instead of leaving straight away. */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () -> Unit, onAddons: () -> Unit) {
+private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () -> Unit, onAddons: () -> Unit, onSettings: () -> Unit) {
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Ink900) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -358,6 +403,7 @@ private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () 
             MenuRow(Icons.Join, "انضمام لغرفة مشاهدة", onJoin)
             MenuRow(Icons.Party, "تبديل الملف", onSwitch)
             if (!Prefs.profileKids) MenuRow(Icons.Sources, "الإضافات", onAddons)
+            MenuRow(Icons.Edit, "الإعدادات", onSettings)
         }
     }
 }

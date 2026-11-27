@@ -204,6 +204,11 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
     }
 
     fun play(videoId: String, label: String, pick: Stream? = null) {
+        // "Always let me choose" (Settings): show the sources instead of starting the fastest.
+        if (pick == null && com.fivebroz.android.data.Prefs.streamMode == "manual") {
+            sourcesFor = videoId to label
+            return
+        }
         PlayerActivity.pendingPick = pick
         val after = if (isSeries) episodes.dropWhile { it.id != videoId }.drop(1).take(30) else emptyList()
         PlayerActivity.start(
@@ -319,6 +324,7 @@ private fun PhoneDetail(
             item("head") {
                 Box(Modifier.fillMaxWidth().height(headH)) {
                     Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().kenBurns())
+                    TrailerBackground(d.trailer, Modifier.fillMaxSize())
                     Box(
                         Modifier.fillMaxSize().background(
                             Brush.verticalGradient(0f to C.Ink950.copy(alpha = 0.45f), 0.3f to Color.Transparent, 1f to ambient),
@@ -534,6 +540,7 @@ private fun TvDetail(
     val ambient = rememberAmbient(d.base.background ?: d.base.poster)
     Box(Modifier.fillMaxSize().background(ambient)) {
         Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().kenBurns())
+        TrailerBackground(d.trailer, Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to C.Ink950.copy(alpha = 0.2f), 0.5f to C.Ink950.copy(alpha = 0.7f), 1f to C.Ink950)))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to C.Ink950)))
 

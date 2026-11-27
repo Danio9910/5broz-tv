@@ -70,6 +70,7 @@ object Prefs {
         profileName = p.name
         profileKids = p.isKids
         profileFamily = p.family
+        com.fivebroz.android.ui.Look.load() // each profile has its own colours
     }
 
     fun clearProfile() {
@@ -111,6 +112,38 @@ object Prefs {
     var nightMode: Boolean
         get() = sp.getBoolean(k("night"), false)
         set(v) = sp.edit().putBoolean(k("night"), v).apply()
+
+    // ---- look & behaviour (Settings) ----
+    var accent: Int
+        get() = sp.getInt(k("accent"), 0)
+        set(v) = sp.edit().putInt(k("accent"), v).apply()
+    var amoled: Boolean
+        get() = sp.getBoolean(k("amoled"), false)
+        set(v) = sp.edit().putBoolean(k("amoled"), v).apply()
+    /** Home cards: "poster" (tall) or "wide" (landscape). */
+    var cardStyle: String
+        get() = sp.getString(k("cards"), "poster") ?: "poster"
+        set(v) = sp.edit().putString(k("cards"), v).apply()
+    var hiddenRows: Set<String>
+        get() = sp.getStringSet(k("hiddenRows"), emptySet()) ?: emptySet()
+        set(v) = sp.edit().putStringSet(k("hiddenRows"), v).apply()
+    /** Home row titles in the order the person chose (others keep their place after). */
+    var rowOrder: List<String>
+        get() = (sp.getString(k("rowOrder"), "") ?: "").split("\n").filter { it.isNotBlank() }
+        set(v) = sp.edit().putString(k("rowOrder"), v.joinToString("\n")).apply()
+    /** "auto" = fastest source starts by itself; "manual" = always show the list. */
+    var streamMode: String
+        get() = sp.getString(k("streamMode"), "auto") ?: "auto"
+        set(v) = sp.edit().putString(k("streamMode"), v).apply()
+    /** Try the source that worked last time for this video first. */
+    fun lastSource(videoId: String): String? = sp.getString("last.$videoId", null)
+    fun setLastSource(videoId: String, key: String) = sp.edit().putString("last.$videoId", key).apply()
+    var trailerBackground: Boolean
+        get() = sp.getBoolean("trailerBg", false)
+        set(v) = sp.edit().putBoolean("trailerBg", v).apply()
+    var screensaver: Boolean
+        get() = sp.getBoolean("saver", true)
+        set(v) = sp.edit().putBoolean("saver", v).apply()
 
     /** Blur pictures of episodes not watched yet (no spoilers). */
     var spoilerBlur: Boolean

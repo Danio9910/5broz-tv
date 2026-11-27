@@ -799,7 +799,10 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) Log.i("5broz", "PLAYER READY pos=${p.currentPosition} TIMING tap-to-picture ${System.currentTimeMillis() - launchedAt} ms")
                         if (state == Player.STATE_READY && overlay is Overlay.Loading) overlay = Overlay.None
-                        if (state == Player.STATE_READY && syncedFor != currentUrl) autoSync()
+                        if (state == Player.STATE_READY && syncedFor != currentUrl) {
+                            currentKey?.let { com.fivebroz.android.data.Prefs.setLastSource(args.videoId, it) }
+                            autoSync()
+                        }
                         if (state == Player.STATE_ENDED) onEnded()
                     }
                 })
@@ -814,6 +817,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     private var syncedFor: String? = null
     private var currentFile: String? = null
     private var currentHeaders: Map<String, String> = emptyMap()
+    /** infoHash or URL of the source now playing. */
+    private var currentKey: String? = null
     private var translateOk = false
 
     /**
@@ -901,7 +906,10 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             }
             val picked = pendingPick.also { pendingPick = null }
             userPicked = picked != null
-            candidates = (listOfNotNull(picked) + ranked)
+            // The source that worked last time for this video goes first (Nuvio's "reuse last link").
+            val last = com.fivebroz.android.data.Prefs.lastSource(args.videoId)
+            val ordered = ranked.sortedByDescending { (it.url ?: it.infoHash) == last }
+            candidates = (listOfNotNull(picked) + ordered)
                 .distinctBy { it.url ?: it.infoHash }
                 .take(8)
             Log.i("5broz", "TIMING sources in ${System.currentTimeMillis() - launchedAt} ms; candidates=${candidates.size} torrents=${candidates.count { it.url == null }}")
@@ -958,6 +966,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         val direct = candidates[group[0]].url
         if (direct != null) {
             tried += group[0]
+            currentKey = direct
             stopTorrent()
             val hdrs = candidates[group[0]].headers
             torrentJob = lifecycleScope.launch {
@@ -1006,6 +1015,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             }
             val (w, local) = result
             tried += group[w]
+            currentKey = candidates[group[w]].infoHash
             Log.i("5broz", "TIMING first piece in ${System.currentTimeMillis() - t0} ms (race of ${group.size}, winner #${group[w]}) total ${System.currentTimeMillis() - launchedAt} ms file=${engine.fileName}")
             awaitSubs(1200)
             overlay = Overlay.Loading("لحظات…")

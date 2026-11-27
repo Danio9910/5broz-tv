@@ -4,6 +4,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.ExperimentalTextApi
@@ -15,15 +17,35 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.fivebroz.android.R
 
+/** Accent and background choices (Settings → المظهر). Read as state so the app recolours at once. */
+object Look {
+    val accents = listOf(
+        "ذهبي" to Color(0xFFC8A96A),
+        "أبيض" to Color(0xFFE9E6DF),
+        "أحمر" to Color(0xFFD9534F),
+        "أزرق" to Color(0xFF5B9BD5),
+        "بنفسجي" to Color(0xFF9B7BD4),
+        "أخضر" to Color(0xFF5DBB8A),
+        "عنبري" to Color(0xFFE0A33A),
+    )
+    var accent by androidx.compose.runtime.mutableStateOf(accents[0].second)
+    var amoled by androidx.compose.runtime.mutableStateOf(false)
+
+    fun load() {
+        accent = accents.getOrNull(com.fivebroz.android.data.Prefs.accent)?.second ?: accents[0].second
+        amoled = com.fivebroz.android.data.Prefs.amoled
+    }
+}
+
 object C {
-    val Ink950 = Color(0xFF0A0A0B)
-    val Ink900 = Color(0xFF111113)
+    val Ink950: Color get() = if (Look.amoled) Color.Black else Color(0xFF0A0A0B)
+    val Ink900: Color get() = if (Look.amoled) Color(0xFF070707) else Color(0xFF111113)
     val Ink800 = Color(0xFF1A1A1D)
     val Ink700 = Color(0xFF26262B)
     val Ink600 = Color(0xFF3A3A42)
     val Paper = Color(0xFFF4F1EA)
     val Muted = Color(0xFF8A8A93)
-    val Gold = Color(0xFFC8A96A)
+    val Gold: Color get() = Look.accent
     val Danger = Color(0xFFE07A6B)
 }
 

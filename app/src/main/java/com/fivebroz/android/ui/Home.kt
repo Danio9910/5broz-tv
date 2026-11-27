@@ -103,7 +103,15 @@ fun HomeScreen(onOpen: (Preview) -> Unit, onProfile: () -> Unit) {
     // Rows from the household's addons (not on kids profiles: addon catalogs aren't filtered).
     var addonRows by remember { mutableStateOf<List<com.fivebroz.android.data.Row>>(emptyList()) }
     LaunchedEffect(attempt, ItemEvents.libraryVersion) { if (!kids) addonRows = Api.addonRows() }
-    val shown = home?.let { if (addonRows.isEmpty()) it else it.copy(rows = it.rows + addonRows) }
+    val shown = home?.let { h ->
+        // The person's own row order and hidden rows (Settings → الرئيسية).
+        val hidden = Prefs.hiddenRows
+        val order = Prefs.rowOrder
+        val rows = (h.rows + addonRows).filter { it.title !in hidden }
+            .sortedBy { r -> order.indexOf(r.title).let { if (it < 0) Int.MAX_VALUE else it } }
+        h.copy(rows = rows)
+    }
+    LaunchedEffect(home, addonRows) { home?.let { h -> lastRowTitles = (h.rows + addonRows).map { it.title } } }
     // Coming back from the player: refresh continue watching.
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { ItemEvents.resumeVersion++ }
 
@@ -306,6 +314,9 @@ private fun ContinueRow(resume: List<ResumeItem>, g: Dp, onFocusItem: ((Preview)
     }
 }
 
+/** Row titles of the last home page, for Settings → الرئيسية. */
+var lastRowTitles: List<String> = emptyList()
+
 /** Continue watching goes straight back into the film — no page in between. */
 fun resumePlay(ctx: android.content.Context, r: ResumeItem) {
     val p = r.videoId.split(":")
@@ -476,6 +487,7 @@ private fun TvPosterRow(
                 val mod = if (i == 0 && firstFocus != null) Modifier.focusRequesterSafe(firstFocus) else Modifier
                 Box(mod) {
                     if (ranked) RankedPoster(i + 1, it, w, { onOpen(it) }) { onFocusItem(it) }
+                    else if (Prefs.cardStyle == "wide") WideCard(it, w * 1.9f, { onOpen(it) }, onFocus = { onFocusItem(it) })
                     else Poster(it, w, { onOpen(it) }, onFocus = { onFocusItem(it) })
                 }
             }
