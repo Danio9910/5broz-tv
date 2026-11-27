@@ -29,9 +29,24 @@ android {
     }
 
     buildTypes {
+        // What the family installs: shrunk and optimised by R8, with a start-up profile
+        // (src/main/baseline-prof.txt) so Android pre-compiles the hot paths at install.
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (ksPass.isNotEmpty()) signingConfig = signingConfigs.getByName("family")
+            buildConfigField("boolean", "BENCH", "false")
+        }
+        // Same as release, test-signed, for measuring against other apps on CI emulators.
+        create("bench") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            buildConfigField("boolean", "BENCH", "true")
+        }
+        debug {
+            buildConfigField("boolean", "BENCH", "false")
         }
     }
 
@@ -85,6 +100,7 @@ dependencies {
     implementation("org.libtorrent4j:libtorrent4j-android-x86_64:$lt")
     // 32-bit x86 only matters for the Android TV emulator in CI — kept out of the release APK.
     debugImplementation("org.libtorrent4j:libtorrent4j-android-x86:$lt")
+    "benchImplementation"("org.libtorrent4j:libtorrent4j-android-x86:$lt")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     val media3 = "1.6.1"
@@ -99,5 +115,7 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     // daily new-episode check and the home-screen widget refresh
     implementation("androidx.work:work-runtime-ktx:2.10.1")
+    // installs the start-up profiles (ours and the libraries') on sideloaded installs too
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
 }

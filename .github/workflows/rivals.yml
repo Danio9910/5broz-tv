@@ -24,14 +24,14 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build 5broz (debug build — slower than the release the family uses)
-        run: chmod +x ./gradlew && ./gradlew assembleDebug --no-daemon
+      - name: Build 5broz (optimised like the release the family installs, test-signed)
+        run: chmod +x ./gradlew && ./gradlew assembleBench --no-daemon
       - name: Fetch Stremio and Nuvio (official downloads)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p apks
-          cp app/build/outputs/apk/debug/app-debug.apk apks/5broz.apk
+          cp app/build/outputs/apk/bench/app-bench.apk apks/5broz.apk
           if [ "${{ matrix.mode }}" = tv ]; then
             curl -fL -o apks/stremio.apk https://dl.strem.io/android/v1.10.4-androidTV/com.stremio.one-1.10.4-32097156-x86.apk || true
             REPO=NuvioMedia/NuvioTV; PREF='x86[^_]|x86\.apk|universal'

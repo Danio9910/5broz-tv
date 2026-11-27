@@ -1,0 +1,8 @@
+# Start-up profile: pre-compile 5broz's own code paths at install (opening, home, title page,
+# player). Library profiles (Compose, Media3, Coil…) are merged in automatically.
+HSPLcom/fivebroz/android/MainActivity;->**(**)**
+HSPLcom/fivebroz/android/FiveBrozApp;->**(**)**
+HSPLcom/fivebroz/android/ui/**;->**(**)**
+HSPLcom/fivebroz/android/data/**;->**(**)**
+HSPLcom/fivebroz/android/player/**;->**(**)**
+Lcom/fivebroz/android/**;

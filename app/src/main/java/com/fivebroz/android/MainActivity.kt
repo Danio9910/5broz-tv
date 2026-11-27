@@ -47,6 +47,11 @@ class MainActivity : ComponentActivity() {
             runCatching { NewEpisodesWorker.schedule(app); ContinueWidget.refresh(app) }
         }.start()
         // A title link (TV home screen) only opens for a device that's already set up.
+        // Benchmark builds only (CI comparisons): start as the guest profile with no access-code screen.
+        if (BuildConfig.BENCH && intent?.getBooleanExtra("bench", false) == true) {
+            Prefs.gatePassed = true
+            if (Prefs.profileId == null) { Prefs.profileId = "guest"; Prefs.profileName = "اختبار" }
+        }
         takeRemoteLink(intent)
         if (intent?.data != null && (!Prefs.gatePassed || Prefs.profileId == null)) intent = intent.setData(null)
         // Phones browse upright like other streaming apps (the player rotates on its own).

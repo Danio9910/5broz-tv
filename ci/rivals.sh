@@ -51,7 +51,8 @@ for spec in $APKS; do
 
   # 1) cold start
   adb logcat -c
-  T1=$(adb shell am start -W -n "$ACT" | tee -a $OUT/$NAME-start.txt | grep -E "TotalTime" | grep -o '[0-9]*')
+  EX=""; [ "$NAME" = 5broz ] && EX="--ez bench true"
+  T1=$(adb shell am start -W -n "$ACT" $EX | tee -a $OUT/$NAME-start.txt | grep -E "TotalTime" | grep -o '[0-9]*')
   echo "$NAME cold start (first frame): ${T1} ms" | tee -a $R
   sleep 1; shot $NAME-01-1s
   sleep 2; shot $NAME-02-3s
@@ -113,9 +114,18 @@ for spec in $APKS; do
   # 5) memory, then a second start
   adb shell dumpsys meminfo $P | grep -E "TOTAL PSS|TOTAL:" | head -1 | sed "s/^/$NAME memory: /" | tee -a $R
   adb shell am force-stop $P; sleep 2
-  T2=$(adb shell am start -W -n "$ACT" | grep -E "TotalTime" | grep -o '[0-9]*')
+  T2=$(adb shell am start -W -n "$ACT" $EX | grep -E "TotalTime" | grep -o '[0-9]*')
   echo "$NAME second start: ${T2} ms" | tee -a $R
   sleep 4; shot $NAME-10-second-start
+  if [ "$NAME" = 5broz ]; then
+    # The optimised build must still play (R8 must not have broken the torrent engine or decoders).
+    adb logcat -c
+    adb shell am start -a android.intent.action.VIEW -d "fivebroz://title/movie/tt1375666" -n "$ACT" $EX; sleep 8; shot 5broz-11-title
+    if [ "$MODE" = tv ]; then key DPAD_CENTER 1; else tap_any "تشغيل"; fi
+    sleep 50; shot 5broz-12-playing
+    adb logcat -d | grep -E "TIMING|PLAYER READY|FATAL|UnsatisfiedLink|NoSuchMethod|ClassNotFound" | tail -30 > $OUT/5broz-play.txt
+    grep -qE "PLAYER READY|TIMING first-frame" $OUT/5broz-play.txt && echo "5broz optimised build plays: yes" | tee -a $R || echo "5broz optimised build plays: NO (see 5broz-play.txt)" | tee -a $R
+  fi
   adb shell am force-stop $P
   adb shell pm uninstall $P > /dev/null
   echo >> $R
