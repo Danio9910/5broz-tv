@@ -64,7 +64,17 @@ data class Stream(
     val headers: Map<String, String> = emptyMap(),
 )
 
-data class Subtitle(val id: String, val url: String, val lang: String)
+data class Subtitle(
+    val id: String,
+    val url: String,
+    val lang: String,
+    val hash: Boolean = false, // made for this exact file — perfect timing
+    val fps: Double? = null,
+    val file: String? = null, // the release it was timed for
+) {
+    val isArabic get() = lang.lowercase() in setOf("ara", "ar", "arabic", "العربية")
+    val isEnglish get() = lang.lowercase() in setOf("eng", "en", "english")
+}
 
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
@@ -215,21 +225,44 @@ object Api {
         }
     }
 
-    suspend fun subtitles(type: String, videoId: String): List<Subtitle> = try {
-        val body = JSONObject().put("type", type).put("id", videoId).put("addons", org.json.JSONArray())
+    suspend fun subtitles(
+        type: String,
+        videoId: String,
+        videoHash: String? = null,
+        videoSize: Long? = null,
+        filename: String? = null,
+    ): List<Subtitle> = try {
+        val body = JSONObject().put("type", type).put("id", videoId).put("addons", org.json.JSONArray(Db.addonUrls()))
+        if (videoHash != null) body.put("videoHash", videoHash)
+        if (videoSize != null) body.put("videoSize", videoSize)
+        if (filename != null) body.put("filename", filename)
         Net.postObj("$B/api/subtitles", body).optJSONArray("subtitles").mapObjects { s ->
             val url = s.str("url") ?: return@mapObjects null
-            Subtitle(s.str("id") ?: url, url, s.str("lang") ?: "sub")
+            Subtitle(
+                s.str("id") ?: url, url, s.str("lang") ?: "sub",
+                hash = s.optBoolean("hash"),
+                fps = s.optDouble("fps").takeIf { !it.isNaN() },
+                file = s.str("file"),
+            )
         }
     } catch (_: Exception) {
         emptyList()
     }
 
     /** Subtitles are proxied through the site, which converts SRT to WebVTT. */
-    fun subtitleProxy(url: String, offsetSec: Float = 0f) =
-        "$B/api/sub?u=${enc(url)}" + if (offsetSec != 0f) "&o=$offsetSec" else ""
+    fun subtitleProxy(
+        url: String,
+        offsetSec: Float = 0f,
+        ref: String? = null, // AutoSync reference (made for this file)
+        second: String? = null, // a second language shown under the first
+        translate: Boolean = false, // machine-translate to Arabic
+    ) = "$B/api/sub?u=${enc(url)}" +
+        (if (offsetSec != 0f) "&o=$offsetSec" else "") +
+        (ref?.let { "&ref=${enc(it)}" } ?: "") +
+        (second?.let { "&u2=${enc(it)}" } ?: "") +
+        (if (translate) "&tr=ar" else "")
 
-    data class Health(val ok: Boolean, val catalog: Boolean, val torrents: Boolean, val debridActive: Boolean, val daysLeft: Int?)
+    data class Health(val ok: Boolean, val catalog: Boolean, val torrents: Boolean, val debridActive: Boolean, val daysLeft: Int?, val translate: Boolean = false)
 
     suspend fun health(): Health? = try {
         val o = Net.getObj("$B/api/health")
@@ -240,6 +273,7 @@ object Api {
             torrents = o.optBoolean("torrents", true),
             debridActive = d?.optBoolean("active", false) ?: false,
             daysLeft = d?.let { if (it.isNull("daysLeft")) null else it.optInt("daysLeft") },
+            translate = o.optBoolean("translate", false),
         )
     } catch (_: Exception) {
         null

@@ -193,17 +193,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             keepScreenOn = true
             useController = false // our own controls (Controls.kt)
             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-            subtitleView?.apply {
-                setStyle(
-                    CaptionStyleCompat(
-                        AColor.WHITE, AColor.TRANSPARENT, AColor.TRANSPARENT,
-                        CaptionStyleCompat.EDGE_TYPE_OUTLINE, AColor.BLACK,
-                        ResourcesCompat.getFont(this@PlayerActivity, R.font.cairo),
-                    ),
-                )
-                setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * com.fivebroz.android.data.Prefs.subScale)
-            }
         }
+        applySubStyle()
         root.addView(playerView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         root.addView(
             ComposeView(this).apply { setContent { OverlayUi() } },
@@ -418,9 +409,36 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
 
     override val subtitleOffset: Float get() = subOffset
 
+    override fun resetSubtitleDelay() = shiftSubtitles(-subOffset)
+
+    /** Colour, background box, size and height of the subtitles (per profile). */
+    override fun applySubStyle() {
+        val color = if (com.fivebroz.android.data.Prefs.subColor == "yellow") AColor.rgb(255, 221, 87) else AColor.WHITE
+        val box = com.fivebroz.android.data.Prefs.subBox
+        playerView.subtitleView?.apply {
+            setStyle(
+                CaptionStyleCompat(
+                    color, if (box) AColor.argb(170, 0, 0, 0) else AColor.TRANSPARENT, AColor.TRANSPARENT,
+                    if (box) CaptionStyleCompat.EDGE_TYPE_NONE else CaptionStyleCompat.EDGE_TYPE_OUTLINE, AColor.BLACK,
+                    ResourcesCompat.getFont(this@PlayerActivity, R.font.cairo),
+                ),
+            )
+            setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * com.fivebroz.android.data.Prefs.subScale)
+            setBottomPaddingFraction(com.fivebroz.android.data.Prefs.subPos)
+        }
+    }
+
+    override val secondLanguage: Boolean get() = com.fivebroz.android.data.Prefs.subSecond
+
+    override fun setSecondLanguage(on: Boolean) {
+        com.fivebroz.android.data.Prefs.subSecond = on
+        reloadSubtitles()
+    }
+
     /** Rebuild the subtitles with a time shift, keeping the video where it is. */
     override fun shiftSubtitles(deltaSec: Float) {
-        subOffset = ((subOffset + deltaSec) * 10).toInt() / 10f
+        subOffset = (Math.round((subOffset + deltaSec) * 10) / 10f).coerceIn(-180f, 180f)
+        com.fivebroz.android.data.Prefs.setSubDelay(args.videoId, subOffset)
         val p = player ?: return
         val url = currentUrl ?: return
         val pos = p.currentPosition
@@ -447,6 +465,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             }
             val label = listOfNotNull(f.label, lang).distinct().joinToString(" — ").ifBlank { "مسار ${i + 1}" } + ch
             SubOption(label, g.isSelected) {
+                // Remembered for this series' next episodes.
+                if (args.type == "series") com.fivebroz.android.data.Prefs.setAudioLang(args.metaId, f.language?.takeIf { it != "und" })
                 p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                     .setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, 0))
                     .build()
@@ -584,7 +604,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             setParameters(
                 buildUponParameters()
                     .setPreferredTextLanguage(if (lang == "en") "en" else "ar")
-                    .setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, lang == "off"),
+                    .setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, lang == "off")
+                    .apply { com.fivebroz.android.data.Prefs.audioLang(args.metaId)?.let { setPreferredAudioLanguage(it) } },
             )
         }
         return ExoPlayer.Builder(this)
@@ -622,6 +643,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) Log.i("5broz", "PLAYER READY pos=${p.currentPosition} TIMING tap-to-picture ${System.currentTimeMillis() - launchedAt} ms")
                         if (state == Player.STATE_READY && overlay is Overlay.Loading) overlay = Overlay.None
+                        if (state == Player.STATE_READY && syncedFor != currentUrl) autoSync()
                         if (state == Player.STATE_ENDED) onEnded()
                     }
                 })
@@ -629,12 +651,72 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     }
 
     private var subs: List<Subtitle> = emptyList()
+
+    // ---- subtitle AutoSync ----
+    private var subPrimary: Subtitle? = null
+    private var subRef: String? = null
+    private var syncedFor: String? = null
+    private var currentFile: String? = null
+    private var currentHeaders: Map<String, String> = emptyMap()
+    private var translateOk = false
+
+    /**
+     * Once the film is playing: fingerprint the file, ask for subtitles made for it, and
+     * either switch to one of those (perfect timing) or align the chosen one to it.
+     * Like Nuvio's AutoSync — no AI, only the subtitle text and its timing.
+     */
+    private fun autoSync() {
+        val url = currentUrl ?: return
+        syncedFor = url
+        val headers = currentHeaders
+        val file = currentFile
+        lifecycleScope.launch {
+            val size = if (url.startsWith("http://127.0.0.1")) engine.fileSize else SubSync.size(url, headers)
+            val hash = size?.let { SubSync.hash(url, it, headers) }
+            Log.i("5broz", "autosync hash=$hash size=$size file=$file")
+            if (hash == null && file == null) return@launch
+            val list = Api.subtitles(args.type, args.videoId, hash, size, file)
+            if (list.isEmpty() || currentUrl != url) return@launch
+            val matched = list.filter { it.hash }
+            val merged = (list + subs).distinctBy { it.url }
+            val primary = SubSync.best(merged, file) { it.isArabic }
+            val ref = (matched.firstOrNull { it.isEnglish } ?: matched.firstOrNull())?.url
+            Log.i("5broz", "autosync matched=${matched.size} primary=${primary?.url?.takeLast(12)} hashMatched=${primary?.hash} ref=${ref != null}")
+            val changed = primary?.url != subPrimary?.url || (ref != subRef && primary?.hash != true)
+            subs = merged
+            if (!changed) return@launch
+            subPrimary = primary
+            subRef = ref.takeIf { primary?.hash != true }
+            reloadSubtitles()
+            if (com.fivebroz.android.data.Prefs.subLang != "off") flash("تمت مزامنة الترجمة تلقائياً")
+        }
+    }
+
+    /** Re-applies the subtitle tracks without losing the place in the film. */
+    private fun reloadSubtitles() {
+        val p = player ?: return
+        val url = currentUrl ?: return
+        val pos = p.currentPosition
+        val playing = p.playWhenReady
+        p.setMediaItem(buildItem(url), pos)
+        p.playWhenReady = playing
+        p.prepare()
+    }
+
+    private fun flash(text: String) {
+        ui.flash = text
+        flashJob?.cancel()
+        flashJob = lifecycleScope.launch { delay(1800); ui.flash = null }
+    }
     private var skipped = false
 
     private fun begin() {
         overlay = Overlay.Loading("جارٍ التحضير…")
         tried.clear()
         launchedAt = System.currentTimeMillis()
+        subOffset = com.fivebroz.android.data.Prefs.subDelay(args.videoId)
+        syncedFor = null
+        lifecycleScope.launch { translateOk = Api.health()?.translate ?: false }
         lifecycleScope.launch {
             subsAsync = async { runCatching { Api.subtitles(args.type, args.videoId) }.getOrDefault(emptyList()) }
             val resumeAsync = async { Db.resumePosition(args.videoId) }
@@ -782,25 +864,43 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     }
 
     private fun buildItem(url: String): MediaItem {
-        val arabic = setOf("ara", "ar", "arabic", "العربية")
-        val chosen = subs.filter { it.lang.lowercase() in arabic }.take(4) +
-            subs.filter { it.lang.lowercase() in setOf("eng", "en", "english") }.take(2)
-        var nAr = 0
-        var nEn = 0
-        val subConfigs = chosen.mapIndexed { i, s ->
-            val ar = s.lang.lowercase() in arabic
-            val label = if (ar) "العربية ${++nAr}" else "English ${++nEn}"
-            MediaItem.SubtitleConfiguration.Builder(Uri.parse(Api.subtitleProxy(s.url, subOffset)))
+        val file = currentFile
+        val primary = subPrimary ?: SubSync.best(subs, file) { it.isArabic }
+        val english = SubSync.best(subs, file) { it.isEnglish }
+        val second = if (com.fivebroz.android.data.Prefs.subSecond) english?.url else null
+        val ref = subRef
+        val configs = mutableListOf<MediaItem.SubtitleConfiguration>()
+        fun add(src: String, lang: String, label: String, default: Boolean) {
+            configs += MediaItem.SubtitleConfiguration.Builder(Uri.parse(src))
                 .setMimeType(MimeTypes.TEXT_VTT)
-                .setLanguage(if (ar) "ar" else "en")
+                .setLanguage(lang)
                 .setLabel(label)
-                .setSelectionFlags(if (i == 0 && ar) MC.SELECTION_FLAG_DEFAULT else 0)
+                .setSelectionFlags(if (default) MC.SELECTION_FLAG_DEFAULT else 0)
                 .build()
         }
-        return MediaItem.Builder().setUri(url).setSubtitleConfigurations(subConfigs).build()
+        if (primary != null) {
+            add(Api.subtitleProxy(primary.url, subOffset, ref.takeIf { !primary.hash }, second), "ar", "العربية", true)
+        } else if (translateOk && english != null) {
+            // No Arabic subtitle exists: translate the best English one.
+            add(Api.subtitleProxy(english.url, subOffset, ref.takeIf { !english.hash }, translate = true), "ar", "العربية (ترجمة آلية)", true)
+        }
+        subs.filter { it.isArabic && it.url != primary?.url }.take(3).forEachIndexed { i, sb ->
+            add(Api.subtitleProxy(sb.url, subOffset, ref.takeIf { !sb.hash }), "ar", "العربية ${i + 2}", false)
+        }
+        subs.filter { it.isEnglish }.sortedByDescending { it.hash }.take(2).forEachIndexed { i, sb ->
+            add(Api.subtitleProxy(sb.url, subOffset, ref.takeIf { !sb.hash }), "en", "English ${i + 1}", primary == null && !translateOk && i == 0)
+        }
+        return MediaItem.Builder().setUri(url).setSubtitleConfigurations(configs).build()
     }
 
     private fun playUrl(url: String, positionSec: Long, headers: Map<String, String> = emptyMap()) {
+        if (url != currentUrl) {
+            subPrimary = null
+            subRef = null
+        }
+        currentHeaders = headers
+        currentFile = if (url.startsWith("http://127.0.0.1")) engine.fileName.takeIf { it.isNotBlank() }
+            else candidates.firstOrNull { it.url == url }?.filename ?: Uri.parse(url).lastPathSegment
         player?.release()
         val p = buildPlayer(headers)
         player = p

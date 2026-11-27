@@ -108,6 +108,10 @@ interface PlayerActions {
     fun setSubtitleSize(scale: Float)
     val subtitleOffset: Float
     fun shiftSubtitles(deltaSec: Float)
+    fun resetSubtitleDelay()
+    fun applySubStyle()
+    val secondLanguage: Boolean
+    fun setSecondLanguage(on: Boolean)
     fun otherSource()
     val hasNextEpisode: Boolean
     fun nextEpisode()
@@ -527,16 +531,43 @@ private fun SubtitlePanel(ui: PlayerUi, a: PlayerActions) {
                 }
             }
             VSpace(14.dp)
-            Text("توقيت الترجمة", color = C.Muted, style = MaterialTheme.typography.labelLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Pill("أبكر 0.5") { a.shiftSubtitles(-0.5f) }
-                Text(
-                    (if (a.subtitleOffset > 0) "+" else "") + "%.1f ث".format(a.subtitleOffset),
-                    color = C.Paper,
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.widthIn(min = 56.dp),
-                )
-                Pill("أبطأ 0.5") { a.shiftSubtitles(0.5f) }
+            Text("توقيت الترجمة (يُحفظ لهذا الفيديو)", color = C.Muted, style = MaterialTheme.typography.labelLarge)
+            var off by remember { mutableFloatStateOf(a.subtitleOffset) }
+            Text(
+                (if (off > 0) "+" else "") + "%.1f ث".format(java.util.Locale.US, off),
+                color = C.Paper,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Pill("−1") { a.shiftSubtitles(-1f); off = a.subtitleOffset }
+                Pill("−0.1") { a.shiftSubtitles(-0.1f); off = a.subtitleOffset }
+                Pill("+0.1") { a.shiftSubtitles(0.1f); off = a.subtitleOffset }
+                Pill("+1") { a.shiftSubtitles(1f); off = a.subtitleOffset }
+            }
+            if (off != 0f) Pill("رجوع للتوقيت التلقائي") { a.resetSubtitleDelay(); off = 0f }
+            VSpace(14.dp)
+            Text("لغة ثانية", color = C.Muted, style = MaterialTheme.typography.labelLarge)
+            var second by remember { mutableStateOf(a.secondLanguage) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill(if (second) "✓ الإنجليزية تحت العربية" else "الإنجليزية تحت العربية") {
+                    second = !second
+                    a.setSecondLanguage(second)
+                }
+            }
+            VSpace(14.dp)
+            Text("الشكل", color = C.Muted, style = MaterialTheme.typography.labelLarge)
+            var color by remember { mutableStateOf(com.fivebroz.android.data.Prefs.subColor) }
+            var box by remember { mutableStateOf(com.fivebroz.android.data.Prefs.subBox) }
+            var pos by remember { mutableFloatStateOf(com.fivebroz.android.data.Prefs.subPos) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill(if (color == "white") "✓ أبيض" else "أبيض") { color = "white"; com.fivebroz.android.data.Prefs.subColor = color; a.applySubStyle() }
+                Pill(if (color == "yellow") "✓ أصفر" else "أصفر") { color = "yellow"; com.fivebroz.android.data.Prefs.subColor = color; a.applySubStyle() }
+                Pill(if (box) "✓ خلفية" else "خلفية") { box = !box; com.fivebroz.android.data.Prefs.subBox = box; a.applySubStyle() }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("أسفل" to 0.08f, "أعلى قليلاً" to 0.18f, "أعلى" to 0.3f).forEach { (l, v) ->
+                    Pill(if (pos == v) "✓ $l" else l) { pos = v; com.fivebroz.android.data.Prefs.subPos = v; a.applySubStyle() }
+                }
             }
             VSpace(14.dp)
             Text("حجم الخط", color = C.Muted, style = MaterialTheme.typography.labelLarge)

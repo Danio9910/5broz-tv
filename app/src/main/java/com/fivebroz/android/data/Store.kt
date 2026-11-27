@@ -89,6 +89,28 @@ object Prefs {
     var subScale: Float
         get() = sp.getFloat(k("subScale"), 1.1f)
         set(v) = sp.edit().putFloat(k("subScale"), v).apply()
+
+    /** Subtitle delay chosen for one video (Nuvio keeps it per profile and per video). */
+    fun subDelay(videoId: String): Float = sp.getFloat(k("delay.$videoId"), 0f)
+    fun setSubDelay(videoId: String, v: Float) = sp.edit().putFloat(k("delay.$videoId"), v).apply()
+
+    /** Subtitle look: text colour, a dark box behind it, height above the bottom (0–0.35). */
+    var subColor: String
+        get() = sp.getString(k("subColor"), "white") ?: "white"
+        set(v) = sp.edit().putString(k("subColor"), v).apply()
+    var subBox: Boolean
+        get() = sp.getBoolean(k("subBox"), false)
+        set(v) = sp.edit().putBoolean(k("subBox"), v).apply()
+    var subPos: Float
+        get() = sp.getFloat(k("subPos"), 0.08f)
+        set(v) = sp.edit().putFloat(k("subPos"), v).apply()
+    /** Show English under the Arabic line. */
+    var subSecond: Boolean
+        get() = sp.getBoolean(k("subSecond"), false)
+        set(v) = sp.edit().putBoolean(k("subSecond"), v).apply()
+    /** Audio language picked for a series, kept for its next episodes. */
+    fun audioLang(metaId: String): String? = sp.getString(k("audio.$metaId"), null)
+    fun setAudioLang(metaId: String, v: String?) = sp.edit().putString(k("audio.$metaId"), v).apply()
 }
 
 data class Profile(
