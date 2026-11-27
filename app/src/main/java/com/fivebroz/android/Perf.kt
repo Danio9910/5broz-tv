@@ -52,14 +52,16 @@ object Perf {
         val rows = JSONArray()
         val hz = runCatching { if (Build.VERSION.SDK_INT >= 30) a.display?.refreshRate else a.windowManager.defaultDisplay.refreshRate }.getOrNull() ?: 60f
         for ((name, b) in buckets) {
-            val copy: IntArray
-            val frames: Int
-            val janky: Int
-            synchronized(b) {
-                if (b.frames < 60) continue
-                copy = b.hist.copyOf(); frames = b.frames; janky = b.janky
-                b.hist.fill(0); b.frames = 0; b.janky = 0
-            }
+            val snap = synchronized(b) {
+                if (b.frames < 60) {
+                    null
+                } else {
+                    val r = Triple(b.hist.copyOf(), b.frames, b.janky)
+                    b.hist.fill(0); b.frames = 0; b.janky = 0
+                    r
+                }
+            } ?: continue
+            val (copy, frames, janky) = snap
             fun pct(p: Double): Int {
                 val target = (frames * p).toInt()
                 var acc = 0
