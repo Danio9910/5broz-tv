@@ -107,12 +107,16 @@ fun Focusable(
         focused -> lift
         else -> 1f
     }
-    val s by animateFloatAsState(target, spring(dampingRatio = 0.7f, stiffness = 500f), label = "lift")
+    // Read while drawing (graphicsLayer below), so the lift animation never recomposes the card.
+    val s = animateFloatAsState(target, spring(dampingRatio = 0.7f, stiffness = 500f), label = "lift")
     val fr = if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier
     val showRing = focused && ring
     Box(
         modifier
-            .scale(s)
+            .graphicsLayer {
+                scaleX = s.value
+                scaleY = s.value
+            }
             .then(fr)
             .onFocusChanged {
                 // a soft tick as the remote moves (follows the TV's own sound setting)
@@ -192,10 +196,11 @@ fun GoldButton(
 
 /** Remote images fade in instead of popping. */
 @Composable
-fun Img(url: String?, modifier: Modifier = Modifier, desc: String? = null) {
+fun Img(url: String?, modifier: Modifier = Modifier, desc: String? = null, fade: Boolean = true) {
     val ctx = LocalContext.current
     AsyncImage(
-        model = remember(url) { ImageRequest.Builder(ctx).data(url).crossfade(180).build() },
+        // Posters in rows appear without a fade: many fading at once while scrolling costs frames.
+        model = remember(url, fade) { ImageRequest.Builder(ctx).data(url).crossfade(if (fade) 180 else 0).build() },
         contentDescription = desc,
         contentScale = ContentScale.Crop,
         modifier = modifier,
@@ -259,7 +264,7 @@ fun Poster(
     ) {
         Box(Modifier.fillMaxSize().background(C.Ink800)) {
             if (item.poster != null) {
-                Img(item.poster.replace("/w500/", "/w342/"), Modifier.fillMaxSize(), item.name)
+                Img(item.poster.replace("/w500/", "/w342/"), Modifier.fillMaxSize(), item.name, fade = false)
             } else {
                 Text(
                     item.name,
