@@ -78,24 +78,30 @@ private fun top10Title(kids: Boolean, family: Boolean) = when {
     else -> "أفضل 10 اليوم"
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(onOpen: (Preview) -> Unit, onProfile: () -> Unit) {
     val kids = Prefs.profileKids
     val family = kids || Prefs.profileFamily
-    var home by remember { mutableStateOf<Home?>(null) }
+    // Open instantly on what this device saw last time; the fresh page replaces it a moment later.
+    var home by remember { mutableStateOf<Home?>(Api.cachedHome(family)) }
     var failed by remember { mutableStateOf(false) }
     var resume by remember { mutableStateOf<List<ResumeItem>>(emptyList()) }
     var attempt by remember { mutableStateOf(0) }
+    var refreshing by remember { mutableStateOf(false) }
 
     LaunchedEffect(family, attempt) {
         failed = false
         try {
             home = Api.home(family)
         } catch (_: Exception) {
-            failed = true
+            if (home == null) failed = true
         }
+        refreshing = false
     }
-    LaunchedEffect(Unit) { resume = Db.continueWatching() }
+    LaunchedEffect(attempt, ItemEvents.resumeVersion) { resume = Db.continueWatching() }
+    // Coming back from the player: refresh continue watching.
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { ItemEvents.resumeVersion++ }
 
     if (failed) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -108,7 +114,12 @@ fun HomeScreen(onOpen: (Preview) -> Unit, onProfile: () -> Unit) {
         return
     }
     if (LocalIsTv.current) TvHome(home, resume, kids, family, onOpen)
-    else PhoneHome(home, resume, kids, family, onOpen, onProfile)
+    else {
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = { refreshing = true; attempt++ },
+        ) { PhoneHome(home, resume, kids, family, onOpen, onProfile) }
+    }
 }
 
 // ---------------------------------------------------------------- phone

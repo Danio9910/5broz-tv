@@ -82,7 +82,24 @@ private class Extras(
     val onRate: (Int) -> Unit,
     val suggested: Boolean,
     val onSuggest: () -> Unit,
+    val onPerson: (com.fivebroz.android.data.CastMember) -> Unit,
+    /** Opens the trailer on YouTube; null when the title has none. */
+    val onTrailer: (() -> Unit)?,
 )
+
+private fun openTrailer(ctx: android.content.Context, key: String) {
+    val app = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$key"))
+    val web = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$key"))
+    try {
+        ctx.startActivity(app)
+    } catch (_: Exception) {
+        try {
+            ctx.startActivity(web)
+        } catch (_: Exception) {
+            android.widget.Toast.makeText(ctx, "ثبّت تطبيق يوتيوب لمشاهدة الإعلان.", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+}
 
 /** Everything both layouts need, computed once. */
 private class DetailModel(
@@ -96,7 +113,7 @@ private class DetailModel(
 )
 
 @Composable
-fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: () -> Unit) {
+fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: () -> Unit, onPerson: (String) -> Unit = {}) {
     val ctx = LocalContext.current
     val isTv = LocalIsTv.current
     val scope = rememberCoroutineScope()
@@ -226,6 +243,8 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
                 scope.launch { Db.suggest(d.base) }
             }
         },
+        onPerson = { onPerson(it.id) },
+        onTrailer = d.trailer?.let { key -> { openTrailer(ctx, key) } },
     )
 
     if (isTv) {
@@ -350,6 +369,7 @@ private fun PhoneDetail(
                         ActionIcon(if (x.suggested) Icons.Check else Icons.Tonight, "لليلة", x.onSuggest, on = x.suggested, modifier = w)
                         ActionIcon(Icons.ThumbUp, "أعجبني", { x.onRate(1) }, on = x.rating == 1, modifier = w)
                         ActionIcon(Icons.ThumbDown, "ليس لي", { x.onRate(-1) }, on = x.rating == -1, modifier = w)
+                        x.onTrailer?.let { ActionIcon(Icons.Trailer, "الإعلان", it, modifier = w) }
                         if (m.mainVideo != null && m.canPlay && available != false) ActionIcon(Icons.Sources, "المصادر", openSources, modifier = w)
                     }
                     VSpace(10.dp)
@@ -376,6 +396,10 @@ private fun PhoneDetail(
                     }
                 }
                 episodeItems(m.episodes.filter { it.season == season }, finished, resumeVideo, g) { e -> play(e.id, epLabel(e), null) }
+            }
+            if (d.people.isNotEmpty() && !com.fivebroz.android.data.Prefs.profileKids) item("cast") {
+                VSpace(14.dp)
+                CastRow(d.people, g, x.onPerson)
             }
             if (d.collection.size > 1) item("collection") {
                 VSpace(14.dp)
@@ -538,6 +562,7 @@ private fun TvDetail(
                         GoldButton(if (x.suggested) "مقترح لليلة" else "اقترح لليلة", x.onSuggest, filled = false, icon = if (x.suggested) Icons.Check else Icons.Tonight)
                         GoldButton("أعجبني", { x.onRate(1) }, filled = false, icon = if (x.rating == 1) Icons.Check else Icons.ThumbUp)
                         GoldButton("ليس لي", { x.onRate(-1) }, filled = false, icon = if (x.rating == -1) Icons.Check else Icons.ThumbDown)
+                        x.onTrailer?.let { GoldButton("الإعلان", it, filled = false, icon = Icons.Trailer) }
                     }
                     if (available == false || !m.canPlay) {
                         VSpace(12.dp)
@@ -569,6 +594,7 @@ private fun TvDetail(
                     }
                 }
             }
+            if (d.people.isNotEmpty() && !com.fivebroz.android.data.Prefs.profileKids) item("cast") { CastRow(d.people, g, x.onPerson) }
             if (d.collection.size > 1) item("collection") { PosterRow(d.collectionName ?: "السلسلة", d.collection, onOpen, g) }
             if (d.related.isNotEmpty() && !com.fivebroz.android.data.Prefs.profileKids) item("related") { PosterRow("قد يعجبك أيضاً", d.related, onOpen, g) }
         }

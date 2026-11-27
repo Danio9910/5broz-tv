@@ -3,6 +3,7 @@ package com.fivebroz.android.ui
 import kotlinx.coroutines.launch
 import com.fivebroz.android.data.Prefs
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -55,18 +56,63 @@ private fun PosterGrid(
     }
 }
 
+private data class Genre(val label: String, val movie: String?, val tv: String?)
+
+private val GENRES = listOf(
+    Genre("أكشن", "28", "10759"),
+    Genre("كوميديا", "35", "35"),
+    Genre("دراما", "18", "18"),
+    Genre("جريمة", "80", "80"),
+    Genre("خيال علمي", "878", "10765"),
+    Genre("إثارة", "53", null),
+    Genre("رعب", "27", null),
+    Genre("غموض", "9648", "9648"),
+    Genre("رومانسي", "10749", null),
+    Genre("رسوم متحركة", "16", "16"),
+    Genre("عائلي", "10751", "10751"),
+    Genre("وثائقي", "99", "99"),
+    Genre("حرب", "10752", "10768"),
+)
+
+private val KIDS_GENRES = listOf(
+    Genre("رسوم متحركة", "16", "16"),
+    Genre("عائلي", "10751", "10751"),
+    Genre("مغامرة", "12", "10759"),
+    Genre("كوميديا", "35", "35"),
+)
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(onOpen: (Preview) -> Unit) {
     var q by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Preview>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
+    var trending by remember { mutableStateOf<List<Preview>>(emptyList()) }
+    var genre by remember { mutableStateOf<Genre?>(null) }
+    var genreItems by remember { mutableStateOf<List<Preview>?>(null) }
+    var recent by remember { mutableStateOf(Prefs.recentSearches) }
 
+    LaunchedEffect(Unit) { trending = Api.trending() }
+    LaunchedEffect(genre) {
+        val gn = genre ?: return@LaunchedEffect
+        genreItems = null
+        // Films and series of that genre, interleaved.
+        val films = gn.movie?.let { Api.genre(it, "movie") }.orEmpty()
+        val shows = gn.tv?.let { Api.genre(it, "series") }.orEmpty()
+        val mixed = ArrayList<Preview>()
+        for (i in 0 until maxOf(films.size, shows.size)) {
+            films.getOrNull(i)?.let(mixed::add)
+            shows.getOrNull(i)?.let(mixed::add)
+        }
+        genreItems = mixed
+    }
     LaunchedEffect(q) {
         val term = q.trim()
         if (term.length < 2) {
             results = emptyList()
             return@LaunchedEffect
         }
+        genre = null
         delay(450) // wait until typing pauses
         searching = true
         results = try {
@@ -77,7 +123,21 @@ fun SearchScreen(onOpen: (Preview) -> Unit) {
         searching = false
     }
 
-    PosterGrid(results, onOpen, header = {
+    val typing = q.trim().length >= 2
+    val open: (Preview) -> Unit = { p ->
+        if (typing) {
+            Prefs.rememberSearch(q)
+            recent = Prefs.recentSearches
+        }
+        onOpen(p)
+    }
+    val items = when {
+        typing -> results
+        genre != null -> genreItems.orEmpty()
+        else -> trending
+    }
+
+    PosterGrid(items, open, header = {
         Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             PageTitle("بحث")
             Field(
@@ -87,14 +147,54 @@ fun SearchScreen(onOpen: (Preview) -> Unit) {
             )
             val msg = when {
                 searching -> "جارٍ البحث…"
-                q.trim().length >= 2 && results.isEmpty() -> "لا نتائج لـ «${q.trim()}»."
+                typing && results.isEmpty() -> "لا نتائج لـ «${q.trim()}»."
                 else -> null
             }
             if (msg != null) {
                 Text(msg, color = C.Muted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
             }
+            if (!typing) {
+                if (recent.isNotEmpty()) {
+                    SectionTitle("عمليات بحث سابقة", Modifier.padding(top = 18.dp, bottom = 8.dp))
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        recent.forEach { r -> Chip(r, false) { q = r } }
+                    }
+                }
+                SectionTitle("تصفّح حسب النوع", Modifier.padding(top = 18.dp, bottom = 8.dp))
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    (if (Prefs.profileKids) KIDS_GENRES else GENRES).forEach { gn ->
+                        Chip(gn.label, genre == gn) { genre = if (genre == gn) null else gn }
+                    }
+                }
+                SectionTitle(
+                    when {
+                        genre != null && genreItems == null -> "جارٍ التحميل…"
+                        genre != null -> genre!!.label
+                        else -> "الأكثر رواجاً هذا الأسبوع"
+                    },
+                    Modifier.padding(top = 22.dp),
+                )
+            }
         }
     })
+}
+
+@Composable
+private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Focusable(onClick, shape = RoundedCornerShape(50), lift = 1.05f, ring = false) { f ->
+        Text(
+            label,
+            Modifier.background(if (f || selected) C.Paper else C.Ink800).padding(horizontal = 14.dp, vertical = 7.dp),
+            color = if (f || selected) C.Ink950 else C.Paper,
+            style = MaterialTheme.typography.labelLarge,
+        )
+    }
 }
 
 @Composable
@@ -103,6 +203,7 @@ fun LibraryScreen(onOpen: (Preview) -> Unit) {
     var resume by remember { mutableStateOf<List<ResumeItem>>(emptyList()) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { saved = null }
+    LaunchedEffect(ItemEvents.libraryVersion, ItemEvents.resumeVersion) { saved = null }
     LaunchedEffect(saved == null) {
         if (saved == null) {
             resume = Db.continueWatching()

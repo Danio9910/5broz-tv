@@ -88,6 +88,7 @@ fun AppNav() {
             })
         }
         composable("main") {
+            ItemMenuHost({ nav.openTitle(it) }) {
             MainScreen(
                 onOpen = { nav.openTitle(it) },
                 onSwitchProfile = {
@@ -95,11 +96,25 @@ fun AppNav() {
                     nav.navigate("profiles") { popUpTo(0) { inclusive = true } }
                 },
             )
+            }
         }
-        composable("title/{type}/{id}") { e ->
+        composable(
+            "title/{type}/{id}",
+            deepLinks = listOf(androidx.navigation.navDeepLink { uriPattern = "fivebroz://title/{type}/{id}" }),
+        ) { e ->
             val type = e.arguments?.getString("type") ?: "movie"
             val id = dec(e.arguments?.getString("id") ?: "")
-            DetailScreen(type = type, id = id, onOpen = { nav.openTitle(it) }, onBack = { nav.popBackStack() })
+            ItemMenuHost({ nav.openTitle(it) }) {
+                DetailScreen(
+                    type = type, id = id, onOpen = { nav.openTitle(it) }, onBack = { nav.popBackStack() },
+                    onPerson = { nav.navigate("person/${enc(it)}") },
+                )
+            }
+        }
+        composable("person/{id}") { e ->
+            ItemMenuHost({ nav.openTitle(it) }) {
+                PersonScreen(dec(e.arguments?.getString("id") ?: ""), onOpen = { nav.openTitle(it) }, onBack = { nav.popBackStack() })
+            }
         }
     }
 }
@@ -327,7 +342,7 @@ private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () 
 }
 
 @Composable
-private fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+internal fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
     Focusable(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(12.dp), lift = 1f, ring = false) { f ->
         Row(
             Modifier.fillMaxWidth().background(if (f) C.Ink700 else Color.Transparent).padding(horizontal = 6.dp, vertical = 14.dp),

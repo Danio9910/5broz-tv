@@ -10,9 +10,24 @@ import java.time.Instant
 /** Device-local settings: access gate + which profile is watching. */
 object Prefs {
     private lateinit var sp: SharedPreferences
+    private var dir: java.io.File? = null
 
     fun init(ctx: Context) {
         sp = ctx.getSharedPreferences("5broz", Context.MODE_PRIVATE)
+        dir = ctx.applicationContext.filesDir
+    }
+
+    fun cacheFile(name: String): java.io.File? = dir?.let { java.io.File(it, name) }
+
+    /** This profile's recent searches, newest first. */
+    var recentSearches: List<String>
+        get() = (sp.getString(k("recent"), "") ?: "").split("\n").filter { it.isNotBlank() }
+        set(v) = sp.edit().putString(k("recent"), v.take(8).joinToString("\n")).apply()
+
+    fun rememberSearch(q: String) {
+        val t = q.trim()
+        if (t.length < 2) return
+        recentSearches = listOf(t) + recentSearches.filter { !it.equals(t, ignoreCase = true) }
     }
 
     var gatePassed: Boolean
@@ -199,6 +214,32 @@ object Db {
             }
         } catch (_: Exception) {
             emptyList()
+        }
+    }
+
+    /** Whether this title is in the profile's continue-watching row. */
+    suspend fun hasResume(metaId: String): Boolean {
+        val p = pid ?: return false
+        return try {
+            select("watch_progress?select=video_id&profile_id=eq.${q(p)}&meta_id=eq.${q(metaId)}&finished=eq.false&position_sec=gte.30&limit=1").length() > 0
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** Takes a title out of continue watching (keeps what was finished — episode check marks stay). */
+    suspend fun clearResume(metaId: String): Boolean {
+        val p = pid ?: return false
+        return try {
+            Net.send(
+                "PATCH",
+                "$URL/watch_progress?profile_id=eq.${q(p)}&meta_id=eq.${q(metaId)}&finished=eq.false",
+                JSONObject().put("position_sec", 0).toString(),
+                headers + mapOf("Prefer" to "return=minimal"),
+            )
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 

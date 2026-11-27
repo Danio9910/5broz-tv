@@ -36,7 +36,11 @@ data class Detail(
     val related: List<Preview>,
     val collectionName: String?,
     val collection: List<Preview>,
+    val people: List<CastMember> = emptyList(),
+    val trailer: String? = null, // YouTube key
 )
+
+data class CastMember(val id: String, val name: String, val character: String?, val photo: String?)
 
 data class Row(val title: String, val items: List<Preview>)
 
@@ -86,8 +90,23 @@ object Api {
         false
     }
 
+    /** The last home page this device loaded, so the app opens instantly while the fresh one arrives. */
+    fun cachedHome(kids: Boolean): Home? = try {
+        Prefs.cacheFile(if (kids) "home-kids.json" else "home.json")?.takeIf { it.exists() }?.readText()?.let { parseHome(JSONObject(it)) }
+    } catch (_: Exception) {
+        null
+    }
+
     suspend fun home(kids: Boolean): Home {
-        val o = Net.getObj(if (kids) "$B/api/home?kids=1" else "$B/api/home")
+        val raw = Net.get(if (kids) "$B/api/home?kids=1" else "$B/api/home")
+        val h = parseHome(JSONObject(raw))
+        if (h.heroes.isNotEmpty() || h.rows.isNotEmpty()) {
+            runCatching { Prefs.cacheFile(if (kids) "home-kids.json" else "home.json")?.writeText(raw) }
+        }
+        return h
+    }
+
+    private fun parseHome(o: JSONObject): Home {
         val heroes = o.optJSONArray("heroes").mapObjects(::parsePreview).ifEmpty {
             listOfNotNull(o.optJSONObject("hero")?.let(::parsePreview))
         }
@@ -128,6 +147,11 @@ object Api {
             related = m.optJSONArray("related").mapObjects(::parsePreview),
             collectionName = col?.str("name"),
             collection = (col?.optJSONArray("items")).mapObjects(::parsePreview),
+            people = m.optJSONArray("castPhotos").mapObjects { c ->
+                val pid = c.opt("id")?.toString()?.takeIf { it.isNotBlank() && it != "null" } ?: return@mapObjects null
+                CastMember(pid, c.str("name") ?: return@mapObjects null, c.str("character"), c.str("photo"))
+            },
+            trailer = m.str("trailer"),
         )
     }
 

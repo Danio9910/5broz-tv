@@ -773,6 +773,12 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         lifecycleScope.launch {
             Db.saveProgress(a.metaId, a.videoId, a.type, a.name, a.poster, pos, dur)
         }
+        if (isTv) {
+            val app = applicationContext
+            lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                WatchNext.update(app, a.type, a.metaId, a.name, a.label, a.poster, pos, dur)
+            }
+        }
     }
 
     private fun onEnded() {

@@ -13,6 +13,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -76,6 +79,7 @@ import com.fivebroz.android.data.Profile
  *  - TV: the focused item lifts and gets a soft gold ring + glow.
  *  - Touch: a press sinks slightly with a light haptic tick.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun Focusable(
     onClick: () -> Unit,
@@ -85,6 +89,7 @@ fun Focusable(
     focusRequester: FocusRequester? = null,
     onFocus: (() -> Unit)? = null,
     ring: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable (focused: Boolean) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -110,10 +115,36 @@ fun Focusable(
             }
             .clip(shape)
             .border(if (showRing) 2.dp else 0.dp, if (showRing) C.Paper else Color.Transparent, shape)
-            .clickable(source, indication = null) {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                onClick()
-            },
+            .then(
+                if (onLongClick == null) {
+                    Modifier.clickable(source, indication = null) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onClick()
+                    }
+                } else {
+                    Modifier
+                        // The remote's menu key opens the same options as a long press.
+                        .onPreviewKeyEvent { e ->
+                            if (e.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_MENU) {
+                                if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) onLongClick()
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        .combinedClickable(
+                            interactionSource = source,
+                            indication = null,
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onLongClick()
+                            },
+                        ) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onClick()
+                        }
+                },
+            ),
     ) { content(focused) }
 }
 
@@ -162,6 +193,9 @@ fun Img(url: String?, modifier: Modifier = Modifier, desc: String? = null) {
     )
 }
 
+/** Long-press (or the remote's menu key) on any poster opens the quick-actions menu. */
+val LocalItemMenu = androidx.compose.runtime.staticCompositionLocalOf<((Preview) -> Unit)?> { null }
+
 /** A soft breathing placeholder while content loads. */
 @Composable
 fun Skeleton(modifier: Modifier, shape: Shape = RoundedCornerShape(8.dp)) {
@@ -194,11 +228,13 @@ fun Poster(
     progress: Float? = null,
     onFocus: (() -> Unit)? = null,
 ) {
+    val menu = LocalItemMenu.current
     Focusable(
         onClick,
         Modifier.width(width).aspectRatio(2f / 3f),
         RoundedCornerShape(8.dp),
         onFocus = onFocus,
+        onLongClick = menu?.let { m -> { m(item) } },
     ) {
         Box(Modifier.fillMaxSize().background(C.Ink800)) {
             if (item.poster != null) {
@@ -233,8 +269,12 @@ fun WideCard(
     subtitle: String? = null,
     onFocus: (() -> Unit)? = null,
 ) {
+    val menu = LocalItemMenu.current
     Column(Modifier.width(width)) {
-        Focusable(onClick, Modifier.fillMaxWidth().aspectRatio(16f / 9f), RoundedCornerShape(8.dp), onFocus = onFocus) {
+        Focusable(
+            onClick, Modifier.fillMaxWidth().aspectRatio(16f / 9f), RoundedCornerShape(8.dp), onFocus = onFocus,
+            onLongClick = menu?.let { m -> { m(item) } },
+        ) {
             Box(Modifier.fillMaxSize().background(C.Ink800)) {
                 Img(item.background ?: item.poster, Modifier.fillMaxSize(), item.name)
                 Box(

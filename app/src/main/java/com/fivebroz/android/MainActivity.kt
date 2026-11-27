@@ -31,6 +31,8 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.rgb(10, 10, 11)),
         )
         Prefs.init(applicationContext)
+        // A title link (TV home screen) only opens for a device that's already set up.
+        if (intent?.data != null && (!Prefs.gatePassed || Prefs.profileId == null)) intent = intent.setData(null)
         // Phones browse upright like other streaming apps (the player rotates on its own).
         if (packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) &&
             !packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) &&
