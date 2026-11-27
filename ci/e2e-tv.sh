@@ -12,6 +12,7 @@ cat > /tmp/5broz.xml <<XML
     <boolean name="gate" value="true" />
     <string name="pid">guest</string>
     <string name="pname">اختبار</string>
+    <string name="test_addon">https://www.5broz.com/addon-test</string>
 </map>
 XML
 adb push /tmp/5broz.xml /data/local/tmp/5broz.xml

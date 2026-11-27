@@ -17,6 +17,8 @@ object Prefs {
         dir = ctx.applicationContext.filesDir
     }
 
+    val testAddon: String? get() = sp.getString("test_addon", null)
+
     fun cacheFile(name: String): java.io.File? = dir?.let { java.io.File(it, name) }
 
     /** This profile's recent searches, newest first. */
@@ -403,7 +405,9 @@ object Db {
     /** Addon URLs for stream requests (cached a few minutes). */
     suspend fun addonUrls(): List<String> {
         addonCache?.let { (at, list) -> if (System.currentTimeMillis() - at < 5 * 60_000) return list }
-        val list = addons().map { it.url }
+        var list = addons().map { it.url }
+        // CI only: a debug build can be pointed at a test addon without touching the household list.
+        if (com.fivebroz.android.BuildConfig.DEBUG) Prefs.testAddon?.let { list = list + it }
         addonCache = System.currentTimeMillis() to list
         return list
     }
