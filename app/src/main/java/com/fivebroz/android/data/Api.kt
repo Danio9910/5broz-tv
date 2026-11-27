@@ -1,5 +1,7 @@
 package com.fivebroz.android.data
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import org.json.JSONObject
 import java.net.URLEncoder
 
@@ -23,6 +25,7 @@ data class Episode(
     val overview: String?,
     val thumbnail: String?,
     val released: String?,
+    val rating: Double? = null,
 )
 
 data class Detail(
@@ -154,6 +157,7 @@ object Api {
                     overview = v.str("overview"),
                     thumbnail = v.str("thumbnail"),
                     released = v.str("released"),
+                    rating = v.optDouble("rating").takeIf { !it.isNaN() },
                 )
             },
             related = m.optJSONArray("related").mapObjects(::parsePreview),
@@ -261,6 +265,37 @@ object Api {
         (ref?.let { "&ref=${enc(it)}" } ?: "") +
         (second?.let { "&u2=${enc(it)}" } ?: "") +
         (if (translate) "&tr=ar" else "")
+
+    /** Home rows from the household's addons' own catalogs (like Stremio / Nuvio). */
+    suspend fun addonRows(): List<Row> = try {
+        coroutineScope {
+            Db.addons().filter { it.enabled && it.catalogs }.map { a ->
+                async {
+                    val m = runCatching { Net.getObj("${a.url}/manifest.json") }.getOrNull() ?: return@async emptyList<Row>()
+                    val name = m.optString("name").ifBlank { a.name }
+                    m.optJSONArray("catalogs").mapObjects { c ->
+                        val type = c.optString("type")
+                        val id = c.optString("id")
+                        val extras = c.optJSONArray("extra")
+                        val needsInput = (0 until (extras?.length() ?: 0)).any { extras!!.optJSONObject(it)?.optBoolean("isRequired") == true } ||
+                            (c.optJSONArray("extraRequired")?.length() ?: 0) > 0
+                        if ((type != "movie" && type != "series") || id.isBlank() || needsInput) null else Triple(type, id, c.optString("name"))
+                    }.take(4).map { (type, id, title) ->
+                        async {
+                            val items = runCatching {
+                                Net.getObj("${a.url}/catalog/$type/${enc(id)}.json").optJSONArray("metas").mapObjects { o ->
+                                    parsePreview(o)?.takeIf { it.id.startsWith("tt") || it.id.startsWith("tmdb:") }
+                                }
+                            }.getOrDefault(emptyList())
+                            if (items.size < 3) null else Row(listOf(title, name).filter { it.isNotBlank() }.distinct().joinToString(" — "), items.take(30))
+                        }
+                    }.mapNotNull { it.await() }
+                }
+            }.flatMap { it.await() }.take(10)
+        }
+    } catch (_: Exception) {
+        emptyList()
+    }
 
     /** A timed part of an episode from IntroDB (community timestamps, no key needed). */
     data class Segment(val start: Double, val end: Double)

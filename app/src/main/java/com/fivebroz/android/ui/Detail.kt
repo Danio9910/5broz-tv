@@ -44,6 +44,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
@@ -372,6 +373,10 @@ private fun PhoneDetail(
                         ActionIcon(Icons.ThumbUp, "أعجبني", { x.onRate(1) }, on = x.rating == 1, modifier = w)
                         ActionIcon(Icons.ThumbDown, "ليس لي", { x.onRate(-1) }, on = x.rating == -1, modifier = w)
                         x.onTrailer?.let { ActionIcon(Icons.Trailer, "الإعلان", it, modifier = w) }
+                        run {
+                            val aired = m.episodes.filter { e -> e.released?.let { it <= java.time.LocalDate.now().toString() } ?: true }
+                            if (m.canPlay && aired.size > 3) ActionIcon(Icons.Next, "عشوائية", { aired.random().let { e -> play(e.id, epLabel(e), null) } }, modifier = w)
+                        }
                         if (m.mainVideo != null && m.canPlay && available != false) ActionIcon(Icons.Sources, "المصادر", openSources, modifier = w)
                     }
                     VSpace(10.dp)
@@ -475,7 +480,8 @@ private fun LazyListScope.episodeItems(
             Column(Modifier.fillMaxWidth().padding(horizontal = g, vertical = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.width(136.dp).aspectRatio(16f / 9f).clipRounded(6.dp).background(C.Ink800)) {
-                        if (e.thumbnail != null) Img(e.thumbnail, Modifier.fillMaxSize())
+                        if (e.thumbnail != null) Img(e.thumbnail, Modifier.fillMaxSize().then(if (com.fivebroz.android.data.Prefs.spoilerBlur && e.id !in finished && e.id != resumeVideo) Modifier.blur(14.dp) else Modifier))
+                        RatingBadge(e.rating, Modifier.align(Alignment.TopStart))
                         Box(
                             Modifier.align(Alignment.Center).size(30.dp).background(C.Ink950.copy(alpha = 0.55f), CircleShape)
                                 .border(1.dp, C.Paper.copy(alpha = 0.8f), CircleShape),
@@ -565,6 +571,10 @@ private fun TvDetail(
                         GoldButton("أعجبني", { x.onRate(1) }, filled = false, icon = if (x.rating == 1) Icons.Check else Icons.ThumbUp)
                         GoldButton("ليس لي", { x.onRate(-1) }, filled = false, icon = if (x.rating == -1) Icons.Check else Icons.ThumbDown)
                         x.onTrailer?.let { GoldButton("الإعلان", it, filled = false, icon = Icons.Trailer) }
+                        run {
+                            val aired = m.episodes.filter { e -> e.released?.let { it <= java.time.LocalDate.now().toString() } ?: true }
+                            if (m.canPlay && aired.size > 3) GoldButton("حلقة عشوائية", { aired.random().let { e -> play(e.id, epLabel(e), null) } }, filled = false, icon = Icons.Next)
+                        }
                     }
                     if (available == false || !m.canPlay) {
                         VSpace(12.dp)
@@ -604,12 +614,25 @@ private fun TvDetail(
     }
 }
 
+/** Highlights the episodes people rated highest (9+ on TMDB). */
+@Composable
+private fun RatingBadge(r: Double?, modifier: Modifier) {
+    if (r == null || r < 9.0) return
+    Text(
+        "★ %.1f".format(java.util.Locale.US, r),
+        modifier.padding(5.dp).background(C.Gold, RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
+        color = C.Ink950,
+        style = MaterialTheme.typography.labelMedium,
+    )
+}
+
 @Composable
 private fun TvEpisodeCard(e: Episode, watched: Boolean, current: Boolean, onClick: () -> Unit) {
     Column(Modifier.width(250.dp)) {
         Focusable(onClick, Modifier.fillMaxWidth().aspectRatio(16f / 9f), RoundedCornerShape(8.dp)) {
             Box(Modifier.fillMaxSize().background(C.Ink800)) {
-                if (e.thumbnail != null) Img(e.thumbnail, Modifier.fillMaxSize())
+                if (e.thumbnail != null) Img(e.thumbnail, Modifier.fillMaxSize().then(if (com.fivebroz.android.data.Prefs.spoilerBlur && !watched && !current) Modifier.blur(14.dp) else Modifier))
+                RatingBadge(e.rating, Modifier.align(Alignment.TopStart))
                 if (watched) ProgressLine(1f, Modifier.align(Alignment.BottomCenter))
                 else if (current) ProgressLine(0.5f, Modifier.align(Alignment.BottomCenter))
             }

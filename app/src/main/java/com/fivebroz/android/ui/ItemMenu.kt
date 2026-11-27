@@ -101,6 +101,15 @@ private fun ItemMenu(item: Preview, onOpen: (Preview) -> Unit, onDismiss: () -> 
                 scope.launch { toast(if (Db.suggest(item)) "أُضيف إلى اقتراحات الليلة" else "تعذّر الاقتراح — حاول مجدداً") }
                 onDismiss()
             }
+            MenuRow(Icons.Check, "شاهدته") {
+                scope.launch {
+                    if (Db.markWatched(item)) {
+                        ItemEvents.resumeVersion++
+                        toast("تم — «${item.name}» صار مُشاهَداً")
+                    }
+                }
+                onDismiss()
+            }
             if (resume) {
                 MenuRow(Icons.Close, "إزالة من متابعة المشاهدة") {
                     scope.launch {

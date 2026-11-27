@@ -160,7 +160,9 @@ fun SearchScreen(onOpen: (Preview) -> Unit) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        recent.forEach { r -> Chip(r, false) { q = r } }
+                        recent.forEach { r ->
+                            Chip(r, false, onRemove = { Prefs.forgetSearch(r); recent = Prefs.recentSearches }) { q = r }
+                        }
                     }
                 }
                 SectionTitle("تصفّح حسب النوع", Modifier.padding(top = 18.dp, bottom = 8.dp))
@@ -186,14 +188,20 @@ fun SearchScreen(onOpen: (Preview) -> Unit) {
 }
 
 @Composable
-private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Focusable(onClick, shape = RoundedCornerShape(50), lift = 1.05f, ring = false) { f ->
-        Text(
-            label,
-            Modifier.background(if (f || selected) C.Paper else C.Ink800).padding(horizontal = 14.dp, vertical = 7.dp),
-            color = if (f || selected) C.Ink950 else C.Paper,
-            style = MaterialTheme.typography.labelLarge,
-        )
+private fun Chip(label: String, selected: Boolean, onRemove: (() -> Unit)? = null, onClick: () -> Unit) {
+    // Long-press (or the remote's menu key) removes a recent search.
+    Focusable(onClick, shape = RoundedCornerShape(50), lift = 1.05f, ring = false, onLongClick = onRemove) { f ->
+        androidx.compose.foundation.layout.Row(
+            Modifier.background(if (f || selected) C.Paper else C.Ink800).padding(start = 14.dp, end = if (onRemove != null) 8.dp else 14.dp, top = 7.dp, bottom = 7.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Text(label, color = if (f || selected) C.Ink950 else C.Paper, style = MaterialTheme.typography.labelLarge)
+            if (onRemove != null) {
+                Focusable(onRemove, shape = androidx.compose.foundation.shape.CircleShape, lift = 1f, ring = false) {
+                    Ic(Icons.Close, 14.dp, if (f || selected) C.Ink950 else C.Muted, Modifier.padding(start = 6.dp))
+                }
+            }
+        }
     }
 }
 

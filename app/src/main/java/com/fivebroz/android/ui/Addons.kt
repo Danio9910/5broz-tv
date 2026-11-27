@@ -53,7 +53,10 @@ fun AddonsScreen(onBack: () -> Unit) {
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(tick) { list = Db.addons() }
+    LaunchedEffect(tick) {
+        list = Db.addons()
+        if (tick > 0) ItemEvents.libraryVersion++ // home rows follow the addon list
+    }
 
     fun add() {
         val base = normalize(input)
@@ -105,17 +108,46 @@ fun AddonsScreen(onBack: () -> Unit) {
             SectionTitle("المثبّتة")
             VSpace(8.dp)
             AddonRow("Torrentio", "مدمجة — تورنت", null)
-            list?.forEach { a ->
-                AddonRow(a.name, a.url, if (com.fivebroz.android.data.Prefs.profileKids) null else ({
-                    scope.launch { Db.removeAddon(a.url); tick++ }
-                }))
+            val items = list.orEmpty()
+            val kids = com.fivebroz.android.data.Prefs.profileKids
+            items.forEachIndexed { i, a ->
+                AddonRow(a.name, a.url, if (kids) null else ({ scope.launch { Db.removeAddon(a.url); tick++ } })) {
+                    if (!kids) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Pill2(if (a.enabled) "✓ مفعّلة" else "موقوفة") { scope.launch { Db.updateAddon(a.url, enabled = !a.enabled); tick++ } }
+                            Pill2(if (a.catalogs) "✓ صفوفها في الرئيسية" else "بدون صفوف") { scope.launch { Db.updateAddon(a.url, catalogs = !a.catalogs); tick++ } }
+                            if (i > 0) Pill2("↑") {
+                                scope.launch {
+                                    // swap with the one above
+                                    val above = items[i - 1]
+                                    Db.updateAddon(a.url, position = i - 1)
+                                    Db.updateAddon(above.url, position = i)
+                                    items.forEachIndexed { j, x -> if (j != i && j != i - 1 && x.position != j) Db.updateAddon(x.url, position = j) }
+                                    tick++
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun AddonRow(name: String, sub: String, onRemove: (() -> Unit)?) {
+private fun Pill2(label: String, onClick: () -> Unit) {
+    Focusable(onClick, shape = RoundedCornerShape(50), lift = 1.05f, ring = false) { f ->
+        Text(
+            label,
+            Modifier.background(if (f) C.Paper else C.Ink700).padding(horizontal = 12.dp, vertical = 6.dp),
+            color = if (f) C.Ink950 else C.Paper,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+@Composable
+private fun AddonRow(name: String, sub: String, onRemove: (() -> Unit)?, extra: (@Composable () -> Unit)? = null) {
     Row(
         Modifier.fillMaxWidth().widthIn(max = 640.dp).padding(vertical = 4.dp)
             .background(C.Ink800, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
@@ -124,6 +156,7 @@ private fun AddonRow(name: String, sub: String, onRemove: (() -> Unit)?) {
         Column(Modifier.weight(1f)) {
             Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(sub, color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            extra?.let { androidx.compose.foundation.layout.Spacer(Modifier.size(6.dp)); it() }
         }
         if (onRemove != null) {
             Focusable(onRemove, shape = CircleShape, lift = 1.05f, ring = false) {

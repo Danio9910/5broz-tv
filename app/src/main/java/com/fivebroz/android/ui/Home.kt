@@ -100,6 +100,10 @@ fun HomeScreen(onOpen: (Preview) -> Unit, onProfile: () -> Unit) {
         refreshing = false
     }
     LaunchedEffect(attempt, ItemEvents.resumeVersion) { resume = Db.continueWatching() }
+    // Rows from the household's addons (not on kids profiles: addon catalogs aren't filtered).
+    var addonRows by remember { mutableStateOf<List<com.fivebroz.android.data.Row>>(emptyList()) }
+    LaunchedEffect(attempt, ItemEvents.libraryVersion) { if (!kids) addonRows = Api.addonRows() }
+    val shown = home?.let { if (addonRows.isEmpty()) it else it.copy(rows = it.rows + addonRows) }
     // Coming back from the player: refresh continue watching.
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { ItemEvents.resumeVersion++ }
 
@@ -113,12 +117,12 @@ fun HomeScreen(onOpen: (Preview) -> Unit, onProfile: () -> Unit) {
         }
         return
     }
-    if (LocalIsTv.current) TvHome(home, resume, kids, family, onOpen)
+    if (LocalIsTv.current) TvHome(shown, resume, kids, family, onOpen)
     else {
         androidx.compose.material3.pulltorefresh.PullToRefreshBox(
             isRefreshing = refreshing,
             onRefresh = { refreshing = true; attempt++ },
-        ) { PhoneHome(home, resume, kids, family, onOpen, onProfile) }
+        ) { PhoneHome(shown, resume, kids, family, onOpen, onProfile) }
     }
 }
 

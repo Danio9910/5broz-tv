@@ -112,6 +112,15 @@ object Prefs {
         get() = sp.getBoolean(k("night"), false)
         set(v) = sp.edit().putBoolean(k("night"), v).apply()
 
+    /** Blur pictures of episodes not watched yet (no spoilers). */
+    var spoilerBlur: Boolean
+        get() = sp.getBoolean(k("spoiler"), false)
+        set(v) = sp.edit().putBoolean(k("spoiler"), v).apply()
+
+    fun forgetSearch(q: String) {
+        recentSearches = recentSearches.filter { it != q }
+    }
+
     /** Show English under the Arabic line. */
     var subSecond: Boolean
         get() = sp.getBoolean(k("subSecond"), false)
@@ -420,13 +429,16 @@ object Db {
 
     // ---------- addons (shared by the whole household, like Stremio / Nuvio) ----------
 
-    data class Addon(val url: String, val name: String)
+    data class Addon(val url: String, val name: String, val enabled: Boolean = true, val position: Int = 0, val catalogs: Boolean = true)
 
     @Volatile private var addonCache: Pair<Long, List<String>>? = null
 
     suspend fun addons(): List<Addon> = try {
-        select("household_addons?select=url,name&order=added_at.asc").mapObjects { r ->
-            Addon(r.str("url") ?: return@mapObjects null, r.str("name") ?: "")
+        select("household_addons?select=url,name,enabled,position,catalogs&order=position.asc,added_at.asc").mapObjects { r ->
+            Addon(
+                r.str("url") ?: return@mapObjects null, r.str("name") ?: "",
+                enabled = r.optBoolean("enabled", true), position = r.optInt("position", 0), catalogs = r.optBoolean("catalogs", true),
+            )
         }
     } catch (_: Exception) {
         emptyList()
@@ -435,7 +447,7 @@ object Db {
     /** Addon URLs for stream requests (cached a few minutes). */
     suspend fun addonUrls(): List<String> {
         addonCache?.let { (at, list) -> if (System.currentTimeMillis() - at < 5 * 60_000) return list }
-        var list = addons().map { it.url }
+        var list = addons().filter { it.enabled }.map { it.url }
         // CI only: a debug build can be pointed at a test addon without touching the household list.
         if (com.fivebroz.android.BuildConfig.DEBUG) Prefs.testAddon?.let { list = list + it }
         addonCache = System.currentTimeMillis() to list
@@ -451,6 +463,34 @@ object Db {
         true
     } catch (_: Exception) {
         false
+    }
+
+    /** Turn an addon on/off, show its catalogs on the home page or not, or move it. */
+    suspend fun updateAddon(url: String, enabled: Boolean? = null, position: Int? = null, catalogs: Boolean? = null) {
+        val o = JSONObject()
+        enabled?.let { o.put("enabled", it) }
+        position?.let { o.put("position", it) }
+        catalogs?.let { o.put("catalogs", it) }
+        try {
+            Net.send("PATCH", "$URL/household_addons?url=eq.${q(url)}", o.toString(), headers + mapOf("Prefer" to "return=minimal"))
+        } catch (_: Exception) {
+        }
+        addonCache = null
+    }
+
+    /** "Watched": closes it in continue watching and ticks its episodes. */
+    suspend fun markWatched(item: Preview): Boolean {
+        val p = pid ?: return false
+        return try {
+            Net.send(
+                "PATCH", "$URL/watch_progress?profile_id=eq.${q(p)}&meta_id=eq.${q(item.id)}&finished=eq.false",
+                JSONObject().put("finished", true).toString(), headers + mapOf("Prefer" to "return=minimal"),
+            )
+            if (item.type == "movie") saveProgress(item.id, item.id, item.type, item.name, item.poster, 1, 1)
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     suspend fun removeAddon(url: String) {
