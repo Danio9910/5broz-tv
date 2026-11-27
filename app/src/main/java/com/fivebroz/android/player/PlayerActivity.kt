@@ -1389,7 +1389,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                                 }
                                 VSpace(26.dp)
                                 androidx.compose.material3.LinearProgressIndicator(
-                                    Modifier.width(220.dp).height(2.dp),
+                                    Modifier.size(220.dp, 2.dp),
                                     color = C.Paper,
                                     trackColor = Color.White.copy(alpha = 0.15f),
                                 )
