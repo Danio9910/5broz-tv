@@ -114,6 +114,7 @@ sleep 8; shot 6b-party
 adb shell input keyevent 4; sleep 2
 tap_text "الترجمة"
 sleep 2; shot 6c-subtitles
+adb shell input swipe $((H*9/10)) $((W*3/4)) $((H*9/10)) $((W/4)) 400; sleep 1; shot 6c2-subtitles-more
 adb shell input keyevent 4; sleep 1
 # Picture-in-picture: resume, then go home — the film should shrink into a floating window.
 adb shell input keyevent 126; sleep 3
@@ -125,6 +126,10 @@ adb shell am force-stop $PKG; sleep 2
 adb shell am start -n $PKG/.MainActivity; sleep 12
 tap_avatar
 sleep 3; shot 6g-profile-menu
+tap_text "الإعدادات"; sleep 3; shot 6h-settings
+adb shell input swipe $((W/2)) $((H*3/4)) $((W/2)) $((H/5)) 500; sleep 1; shot 6i-settings-2
+adb shell input keyevent 4; sleep 2
+tap_avatar; sleep 3
 tap_text "تبديل الملف" || true
 sleep 8; shot 7-profiles
 tap_text "إدارة الملفات"
@@ -163,7 +168,7 @@ adb shell "cat /data/local/tmp/5broz-upd.xml | run-as $PKG sh -c 'cat > shared_p
 # so most of it can only arrive while the screen is off.
 # Keep the playback log (with TIMING lines) before the update test clears it.
 adb logcat -d -s 5broz:V AndroidRuntime:E > $OUT/play-log.txt
-grep -E "TIMING|PLAYER READY|race|player error" $OUT/play-log.txt > $OUT/timing.txt; echo end >> $OUT/timing.txt
+grep -E "TIMING|PLAYER READY|race|player error|autosync|introdb" $OUT/play-log.txt > $OUT/timing.txt; echo end >> $OUT/timing.txt
 adb logcat -c
 adb shell am start -n $PKG/.MainActivity; sleep 14; shot 13-update-offer
 tap_text "تحديث الآن"
