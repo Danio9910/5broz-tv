@@ -138,6 +138,13 @@ sleep 3; shot 6g-profile-menu
 tap_text "الإعدادات"; sleep 3; shot 6h-settings
 adb shell input swipe $((W/2)) $((H*3/4)) $((W/2)) $((H/5)) 500; sleep 1; shot 6i-settings-2
 adb shell input keyevent 4; sleep 2
+# New: the phone as the TV's remote, downloads, and "what should I watch?"
+tap_avatar; sleep 2; tap_text "ريموت التلفزيون"; sleep 5; shot 6j-remote
+adb shell input keyevent 4; sleep 2
+tap_avatar; sleep 2; tap_text "التنزيلات"; sleep 3; shot 6k-downloads
+adb shell input keyevent 4; sleep 2
+tap_text "وش أشوف"; sleep 3; shot 6l-what-to-watch
+adb shell input keyevent 4; sleep 2
 tap_avatar; sleep 3
 tap_text "تبديل الملف" || true
 sleep 8; shot 7-profiles

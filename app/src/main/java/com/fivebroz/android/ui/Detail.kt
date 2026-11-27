@@ -76,7 +76,27 @@ fun blockedForProfile(d: Detail): Boolean {
     val kidsGenres = d.genres.any { it.contains("رسوم") || it.contains("عائل") || it.contains("أطفال") || it.contains("Animation") || it.contains("Family") || it.contains("Kids") }
     val kidsOk = cert in setOf("G", "PG", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "TV-PG", "0", "6", "7") || (cert.isEmpty() && kidsGenres)
     val adult = cert in setOf("R", "NC-17", "TV-MA", "18", "18+", "R18", "X")
-    return (com.fivebroz.android.data.Prefs.profileKids && !kidsOk) || (com.fivebroz.android.data.Prefs.profileFamily && adult)
+    val g = d.guide
+    // The content guide tightens it: kids never get sexual content or strong violence/fear;
+    // the family profile skips strong sexual content.
+    val kidsGuideBad = (g["sex"] ?: 0) >= 1 || (g["violence"] ?: 0) >= 2 || (g["scary"] ?: 0) >= 2 || (g["drugs"] ?: 0) >= 2
+    val familyGuideBad = (g["sex"] ?: 0) >= 2
+    return (com.fivebroz.android.data.Prefs.profileKids && (!kidsOk || kidsGuideBad)) ||
+        (com.fivebroz.android.data.Prefs.profileFamily && (adult || familyGuideBad))
+}
+
+/** "مشاهد غير لائقة: كثير · عنف: متوسط" — only what's present. */
+fun guideLine(g: Map<String, Int>): String? {
+    val names = listOf("sex" to "مشاهد غير لائقة", "violence" to "عنف", "drugs" to "مخدرات وكحول", "scary" to "مخيف")
+    val parts = names.mapNotNull { (k, label) ->
+        when (g[k] ?: 0) {
+            1 -> "$label: خفيف"
+            2 -> "$label: كثير"
+            else -> null
+        }
+    }
+    if (g.isEmpty()) return null
+    return if (parts.isEmpty()) "دليل المحتوى: مناسب للعائلة" else "دليل المحتوى — " + parts.joinToString(" · ")
 }
 
 fun epLabel(e: Episode) = "م${e.season} · ح${e.episode}" + if (e.title.isNotBlank()) " — ${e.title}" else ""
@@ -131,7 +151,8 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
     val isTv = LocalIsTv.current
     val scope = rememberCoroutineScope()
 
-    var detail by remember { mutableStateOf<Detail?>(null) }
+    // Often already fetched ahead (focused, or on the home screen): draw it straight away.
+    var detail by remember { mutableStateOf<Detail?>(Api.detailNow(type, id)) }
     var failed by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
     var finished by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -277,6 +298,19 @@ fun DetailScreen(type: String, id: String, onOpen: (Preview) -> Unit, onBack: ()
                 d.base.name,
                 buildList {
                     if (mainVideo != null && canPlay && available != false) add(SheetItem(Icons.Sources, "اختيار المصدر") { openSources() })
+                    if (!isTv && mainVideo != null && canPlay && available != false) {
+                        add(SheetItem(Icons.Download, "تنزيل للمشاهدة بدون نت") {
+                            downloadForOffline(ctx, d.base.type, d.base.id, d.base.name, d.base.poster, mainVideo, mainLabel)
+                            scope.launch { ItemEvents.toast = "بدأ التنزيل — تلقاه في «التنزيلات»" }
+                        })
+                        add(SheetItem(Icons.Tv, "افتحه على التلفزيون") {
+                            scope.launch {
+                                val tvs = com.fivebroz.android.data.Household.tvs(ctx)
+                                val ok = tvs.firstOrNull()?.let { t -> com.fivebroz.android.data.Household.send(t.id, "open", org.json.JSONObject().put("type", d.base.type).put("id", d.base.id)) } ?: false
+                                ItemEvents.toast = if (ok) "انفتح على ${tvs.first().name}" else "افتح 5broz على التلفزيون أولاً"
+                            }
+                        })
+                    }
                     add(SheetItem(if (suggested) Icons.Check else Icons.Tonight, if (suggested) "مقترح لليلة" else "اقترح لليلة", suggested) { extras.onSuggest() })
                     if (canPlay && aired.size > 3) add(SheetItem(Icons.Next, "حلقة عشوائية") { aired.random().let { e -> play(e.id, epLabel(e), null) } })
                     add(SheetItem(Icons.Check, "شاهدته") {
@@ -391,6 +425,7 @@ private fun PhoneDetail(
                         d.certification?.let { CertBadge(it) }
                     }
                     ratingsLine(d.ratings)?.let { Text(it, Modifier.padding(top = 4.dp), color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    guideLine(d.guide)?.let { Text(it, Modifier.padding(top = 4.dp), color = if (d.guide.values.any { v -> v >= 2 }) C.Gold else C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                     VSpace(18.dp)
                     if (m.mainText != null && m.mainVideo != null) {
                         GoldButton(m.mainText, { play(m.mainVideo, m.mainLabel, null) }, Modifier.fillMaxWidth(), fill = true, icon = Icons.Play)
@@ -675,6 +710,7 @@ private fun TvDetail(
                         d.certification?.let { CertBadge(it) }
                     }
                     ratingsLine(d.ratings)?.let { Text(it, Modifier.padding(top = 4.dp), color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    guideLine(d.guide)?.let { Text(it, Modifier.padding(top = 4.dp), color = if (d.guide.values.any { v -> v >= 2 }) C.Gold else C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                     if (!d.base.description.isNullOrBlank()) {
                         VSpace(12.dp)
                         Text(d.base.description, style = MaterialTheme.typography.bodyLarge, color = C.Paper.copy(alpha = 0.86f), maxLines = 4, overflow = TextOverflow.Ellipsis)

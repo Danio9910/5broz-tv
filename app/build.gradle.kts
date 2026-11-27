@@ -12,8 +12,8 @@ android {
         applicationId = "com.fivebroz.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "4.2"
+        versionCode = 32
+        versionName = "4.3"
     }
 
     // The keystore is committed; its password lives only in the CI secret
@@ -95,5 +95,9 @@ dependencies {
     // Software audio decoders (AC3, E-AC3, DTS, TrueHD…) so "5.1" releases play on every device, like VLC.
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:$media3+1")
     implementation("androidx.tvprovider:tvprovider:1.0.0")
+    // QR on the TV so a phone can become its remote
+    implementation("com.google.zxing:core:3.5.3")
+    // daily new-episode check and the home-screen widget refresh
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
 }

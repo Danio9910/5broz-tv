@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 /**
- * Opening moment (about 1.3 s, once per launch): the gold "5" is traced as an outline from the
+ * Opening moment (about 0.8 s, once per launch): the gold "5" is traced as an outline from the
  * bottom up, fills with gold as a glint passes over it, "broz" fades in, then everything lifts away.
  */
 @Composable
@@ -37,11 +37,11 @@ fun LaunchIntro(onDone: () -> Unit) {
     val word = remember { Animatable(0f) }
     val out = remember { Animatable(1f) }
     LaunchedEffect(Unit) {
-        trace.animateTo(1f, tween(520, easing = FastOutSlowInEasing))
-        launch { word.animateTo(1f, tween(320)) }
-        fill.animateTo(1f, tween(380))
-        kotlinx.coroutines.delay(220)
-        out.animateTo(0f, tween(260))
+        trace.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+        launch { word.animateTo(1f, tween(220)) }
+        fill.animateTo(1f, tween(240))
+        kotlinx.coroutines.delay(60)
+        out.animateTo(0f, tween(200))
         onDone()
     }
     val gold = Brush.linearGradient(listOf(Color(0xFFF6DFA0), C.Gold, Color(0xFFA8792A)), Offset.Zero, Offset(0f, 400f))

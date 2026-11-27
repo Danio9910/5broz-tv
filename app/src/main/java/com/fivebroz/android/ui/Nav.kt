@@ -200,6 +200,22 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
     var addons by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
     var tvMenu by remember { mutableStateOf(false) }
+    var remote by remember { mutableStateOf<String?>(null) } // "" = pick a TV
+    var downloads by remember { mutableStateOf(false) }
+    var tvCode by remember { mutableStateOf(false) }
+    // A scanned TV code opens that TV's remote.
+    androidx.compose.runtime.LaunchedEffect(PendingRemote.tv) {
+        PendingRemote.tv?.let { remote = it; PendingRemote.tv = null }
+    }
+    // A phone asked this TV to search or open something.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        com.fivebroz.android.RemoteBus.events.collect { e ->
+            when (e) {
+                is com.fivebroz.android.RemoteEvent.Search -> { RemoteSearch.text = e.text; tab = Tab.Search }
+                is com.fivebroz.android.RemoteEvent.Open -> onOpen(Preview(id = e.id, type = e.type, name = ""))
+            }
+        }
+    }
     // Back from another tab returns home first, like every streaming app.
     androidx.activity.compose.BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
 
@@ -251,6 +267,7 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
                         add(SheetItem(Icons.Party, "تبديل الملف") { switchProfile() })
                         add(SheetItem(Icons.Edit, "الإعدادات") { settings = true })
                         if (!Prefs.profileKids) add(SheetItem(Icons.Sources, "الإضافات") { addons = true })
+                        add(SheetItem(Icons.Remote, "جوالك ريموت") { tvCode = true })
                         add(SheetItem(Icons.Join, "انضمام لغرفة مشاهدة") { join = true })
                     },
                 ) { tvMenu = false }
@@ -289,8 +306,23 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
             onJoin = { menu = false; join = true },
             onAddons = { menu = false; addons = true },
             onSettings = { menu = false; settings = true },
+            onRemote = { menu = false; remote = "" },
+            onDownloads = { menu = false; downloads = true },
         )
     }
+    remote?.let { pre ->
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { remote = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) { RemoteScreen(pre.ifBlank { null }) { remote = null } }
+    }
+    if (downloads) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { downloads = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) { DownloadsScreen { downloads = false } }
+    }
+    if (tvCode) TvRemoteCode { tvCode = false }
     if (join) JoinPartyDialog { join = false }
     if (addons) {
         androidx.compose.ui.window.Dialog(
@@ -388,7 +420,7 @@ private fun RailItem(label: String, selected: Boolean, open: Boolean, onClick: (
 
 /** Translucent header that sits over the hero and firms up as you scroll. */
 @Composable
-fun PhoneHeader(solid: Float, onProfile: () -> Unit) {
+fun PhoneHeader(solid: Float, onProfile: () -> Unit, onPick: (() -> Unit)? = null) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -404,8 +436,22 @@ fun PhoneHeader(solid: Float, onProfile: () -> Unit) {
     ) {
         Wordmark(26)
         Spacer(Modifier.weight(1f))
-        Focusable(onProfile, shape = RoundedCornerShape(8.dp), lift = 1f, ring = false) {
-            Avatar(Prefs.current(), 30.dp)
+        onPick?.let { pick ->
+            // One tap when you don't know what to watch: three picks, not fifty.
+            Focusable(pick, Modifier.padding(end = 10.dp), shape = RoundedCornerShape(50), lift = 1.04f, ring = false) {
+                Row(
+                    Modifier.background(C.Paper.copy(alpha = 0.14f)).border(1.dp, C.Paper.copy(alpha = 0.18f), RoundedCornerShape(50))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Ic(Icons.Play, 14.dp)
+                    Text("وش أشوف؟", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+        Focusable(onProfile, shape = CircleShape, lift = 1f, ring = false) {
+            Box(Modifier.border(1.5.dp, C.Gold.copy(alpha = 0.7f), CircleShape).padding(2.dp)) { Avatar(Prefs.current(), 30.dp) }
         }
     }
 }
@@ -418,7 +464,7 @@ private fun PhoneBottomBar(tab: Tab, onTab: (Tab) -> Unit) {
             .navigationBarsPadding()
             .padding(horizontal = 18.dp, vertical = 10.dp)
             .fillMaxWidth()
-            .shadow(18.dp, pill, ambientColor = Color.Black, spotColor = Color.Black)
+            .shadow(8.dp, pill, ambientColor = Color.Black, spotColor = Color.Black)
             .background(C.Ink900.copy(alpha = 0.86f), pill)
             .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.03f))), pill)
             .height(62.dp),
@@ -444,7 +490,7 @@ private fun PhoneBottomBar(tab: Tab, onTab: (Tab) -> Unit) {
 /** Phone: tapping your avatar opens a small sheet instead of leaving straight away. */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () -> Unit, onAddons: () -> Unit, onSettings: () -> Unit) {
+private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () -> Unit, onAddons: () -> Unit, onSettings: () -> Unit, onRemote: () -> Unit, onDownloads: () -> Unit) {
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Ink900) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -455,6 +501,8 @@ private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () 
                 }
             }
             Spacer(Modifier.height(18.dp))
+            MenuRow(Icons.Remote, "ريموت التلفزيون", onRemote)
+            MenuRow(Icons.Download, "التنزيلات", onDownloads)
             MenuRow(Icons.Join, "انضمام لغرفة مشاهدة", onJoin)
             MenuRow(Icons.Party, "تبديل الملف", onSwitch)
             if (!Prefs.profileKids) MenuRow(Icons.Sources, "الإضافات", onAddons)

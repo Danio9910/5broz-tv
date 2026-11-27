@@ -94,7 +94,7 @@ class TorrentEngine(private val workDir: File) {
             for (h in prefetched.toList()) {
                 if (h in want) continue
                 prefetched.remove(h)
-                if (h == currentHash) continue
+                if (h == currentHash || h in downloads) continue
                 s.find(Sha1Hash.parseHex(h))?.let { th -> runCatching { s.remove(th, SessionHandle.DELETE_FILES) } }
             }
             for ((h, m) in want) {
@@ -180,7 +180,7 @@ class TorrentEngine(private val workDir: File) {
                 }
             }
         } finally {
-            for (sl in slots) if (sl !== winner) sl.th?.let { runCatching { s.remove(it, SessionHandle.DELETE_FILES) } }
+            for (sl in slots) if (sl !== winner && sl.infoHash !in downloads) sl.th?.let { runCatching { s.remove(it, SessionHandle.DELETE_FILES) } }
         }
         val w = winner!!
         val ti = w.th!!.torrentFile()
@@ -221,6 +221,53 @@ class TorrentEngine(private val workDir: File) {
         sl.first = first
         sl.last = last
         sl.ready = true
+    }
+
+    // ---- offline downloads (whole file kept on the device) ----
+
+    /** Torrents being kept for offline viewing; never removed by streaming clean-up. */
+    private val downloads = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    data class DownloadInfo(val hasMetadata: Boolean, val fileName: String, val size: Long, val done: Long, val bytesPerSec: Int, val peers: Int, val path: File?) {
+        val finished get() = hasMetadata && size > 0 && done >= size
+    }
+
+    /** Starts (or resumes) keeping one file of a torrent in [dir]. Returns its info-hash. */
+    fun startDownload(magnet: String, dir: File): String {
+        val hash = hashOf(magnet) ?: throw IOException("bad magnet")
+        downloads += hash
+        dir.mkdirs()
+        val s = session()
+        val existing = s.find(Sha1Hash.parseHex(hash))
+        if (existing == null || !existing.isValid) s.download(magnet, dir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
+        else existing.unsetFlags(TorrentFlags.UPLOAD_MODE)
+        synchronized(this) { prefetched.remove(hash) }
+        return hash
+    }
+
+    /** Progress of a kept file; picks the addon's file (or the largest) once metadata arrives. */
+    fun downloadInfo(hash: String, fileIdx: Int?): DownloadInfo? {
+        val th = session?.find(Sha1Hash.parseHex(hash)) ?: return null
+        if (!th.isValid) return null
+        val st = th.status()
+        if (!st.hasMetadata()) return DownloadInfo(false, "", 0, 0, st.downloadPayloadRate(), st.numPeers(), null)
+        val ti = th.torrentFile() ?: return null
+        val fs = ti.files()
+        val n = fs.numFiles()
+        val idx = if (fileIdx != null && fileIdx in 0 until n) fileIdx else (0 until n).maxByOrNull { fs.fileSize(it) } ?: 0
+        val prio = th.filePriorities()
+        if (prio.size == n && (0 until n).any { (it == idx) != (prio[it] != Priority.IGNORE) }) {
+            th.prioritizeFiles(Array(n) { if (it == idx) Priority.DEFAULT else Priority.IGNORE })
+        }
+        val done = runCatching { th.fileProgress()[idx] }.getOrDefault(0L)
+        return DownloadInfo(true, fs.fileName(idx), fs.fileSize(idx), done, st.downloadPayloadRate(), st.numPeers(), File(th.savePath(), fs.filePath(idx)))
+    }
+
+    /** Stops keeping it; [deleteFiles] also removes what was saved. */
+    fun stopDownload(hash: String, deleteFiles: Boolean) {
+        downloads -= hash
+        val th = session?.find(Sha1Hash.parseHex(hash)) ?: return
+        runCatching { if (deleteFiles) session?.remove(th, SessionHandle.DELETE_FILES) else session?.remove(th) }
     }
 
     fun status(): TorrentStatus {
@@ -275,12 +322,13 @@ class TorrentEngine(private val workDir: File) {
     }
 
     private fun closeCurrent() {
+        val wasHash = currentHash
         currentHash = null
         server?.stop()
         server = null
         val th = handle
         handle = null
-        if (th != null) {
+        if (th != null && wasHash !in downloads) {
             try {
                 session?.remove(th, SessionHandle.DELETE_FILES)
             } catch (_: Exception) {

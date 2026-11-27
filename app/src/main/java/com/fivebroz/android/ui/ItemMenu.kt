@@ -45,6 +45,29 @@ import kotlinx.coroutines.launch
 object ItemEvents {
     var resumeVersion by mutableIntStateOf(0)
     var libraryVersion by mutableIntStateOf(0)
+    /** A short confirmation shown at the bottom of the screen ("بدأ التنزيل"). */
+    var toast by mutableStateOf<String?>(null)
+}
+
+/** The one place short confirmations appear: bottom centre, gone after a moment. */
+@Composable
+fun ToastHost(modifier: Modifier = Modifier) {
+    val msg = ItemEvents.toast
+    androidx.compose.runtime.LaunchedEffect(msg) {
+        if (msg != null) { kotlinx.coroutines.delay(2600); ItemEvents.toast = null }
+    }
+    androidx.compose.animation.AnimatedVisibility(
+        msg != null, modifier,
+        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { it / 2 },
+        exit = androidx.compose.animation.fadeOut(),
+    ) {
+        Text(
+            msg ?: "",
+            Modifier.background(C.Paper, androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(horizontal = 18.dp, vertical = 12.dp),
+            color = C.Ink950,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+    }
 }
 
 /** Gives every poster under it a long-press menu. */

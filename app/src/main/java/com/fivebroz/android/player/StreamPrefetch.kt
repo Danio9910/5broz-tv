@@ -59,6 +59,8 @@ object StreamPrefetch {
     fun warmEngine(ctx: Context) {
         val app = ctx.applicationContext
         scope.launch {
+            // after the first screens have drawn — it competes for the CPU on modest phones
+            kotlinx.coroutines.delay(4000)
             try {
                 Torrents.get(app).warmUp()
             } catch (t: Throwable) {

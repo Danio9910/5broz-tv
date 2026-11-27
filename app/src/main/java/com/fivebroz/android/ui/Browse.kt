@@ -21,6 +21,11 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,18 +87,26 @@ private val KIDS_GENRES = listOf(
     Genre("كوميديا", "35", "35"),
 )
 
+object RemoteSearch {
+    var text by androidx.compose.runtime.mutableStateOf<String?>(null)
+}
+
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(onOpen: (Preview) -> Unit) {
     var q by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Preview>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
+    var understood by remember { mutableStateOf<String?>(null) }
+    val listen = rememberVoice { said -> q = said }
     var trending by remember { mutableStateOf<List<Preview>>(emptyList()) }
     var genre by remember { mutableStateOf<Genre?>(null) }
     var genreItems by remember { mutableStateOf<List<Preview>?>(null) }
     var recent by remember { mutableStateOf(Prefs.recentSearches) }
 
     LaunchedEffect(Unit) { trending = Api.trending() }
+    // Typed or spoken on a phone that's this TV's remote.
+    LaunchedEffect(RemoteSearch.text) { RemoteSearch.text?.let { q = it; RemoteSearch.text = null } }
     LaunchedEffect(genre) {
         val gn = genre ?: return@LaunchedEffect
         genreItems = null
@@ -114,13 +127,15 @@ fun SearchScreen(onOpen: (Preview) -> Unit) {
             return@LaunchedEffect
         }
         genre = null
-        delay(450) // wait until typing pauses
+        delay(300) // wait until typing pauses
         searching = true
-        results = try {
-            Api.search(term)
+        val (list, read) = try {
+            Api.searchAsk(term)
         } catch (_: Exception) {
-            emptyList()
+            emptyList<Preview>() to null
         }
+        results = list
+        understood = read
         searching = false
     }
 
@@ -141,14 +156,24 @@ fun SearchScreen(onOpen: (Preview) -> Unit) {
     PosterGrid(items, open, header = {
         Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             PageTitle("بحث")
-            Field(
-                q, { q = it }, "ابحث عن فيلم أو مسلسل…", {},
-                Modifier.fillMaxWidth().widthIn(max = 640.dp),
-                center = false,
-            )
+            Row(Modifier.fillMaxWidth().widthIn(max = 640.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Field(
+                    q, { q = it }, "اسم فيلم، أو قل وش تبي: «فيلم يضحّك قصير»", {},
+                    Modifier.weight(1f),
+                    center = false,
+                )
+                if (canListen()) {
+                    Focusable(listen, shape = CircleShape, lift = 1.08f, ring = true) { f ->
+                        Box(Modifier.size(48.dp).background(if (f) C.Paper else C.Ink800, CircleShape), contentAlignment = Alignment.Center) {
+                            Ic(Icons.Mic, 22.dp, if (f) C.Ink950 else C.Paper)
+                        }
+                    }
+                }
+            }
             val msg = when {
-                searching -> "جارٍ البحث…"
-                typing && results.isEmpty() -> "لا نتائج لـ «${q.trim()}»."
+                searching -> "نبحث…"
+                typing && results.isEmpty() -> "ما لقينا «${q.trim()}». جرّب اسم ثاني أو اوصف اللي تبيه."
+                typing && understood != null -> "فهمنا: $understood"
                 else -> null
             }
             if (msg != null) {

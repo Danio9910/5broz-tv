@@ -45,7 +45,7 @@ object C {
     val Ink700 = Color(0xFF26262B)
     val Ink600 = Color(0xFF3A3A42)
     val Paper = Color(0xFFF4F1EA)
-    val Muted = Color(0xFF8A8A93)
+    val Muted = Color(0xFFA9A9B2) // secondary text: readable on a modest screen in daylight
     val Gold: Color get() = Look.accent
     val Danger = Color(0xFFE07A6B)
 }

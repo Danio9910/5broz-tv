@@ -98,6 +98,8 @@ data class PlayArgs(
     val queueLabels: ArrayList<String> = arrayListOf(),
     val partyId: String? = null,
     val partyHost: Boolean = false,
+    /** Start here (seconds) — e.g. handed over from another device. Otherwise the saved position. */
+    val startSec: Long = -1,
 )
 
 private sealed interface Overlay {
@@ -129,7 +131,9 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                     .putStringArrayListExtra("queueIds", a.queueIds)
                     .putStringArrayListExtra("queueLabels", a.queueLabels)
                     .putExtra("partyId", a.partyId)
-                    .putExtra("partyHost", a.partyHost),
+                    .putExtra("partyHost", a.partyHost)
+                    .putExtra("startSec", a.startSec)
+                    .addFlags(if (ctx is android.app.Activity) 0 else Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         }
     }
@@ -139,7 +143,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     private var player: ExoPlayer? = null
     private var isTv = false
 
-    private var overlay by mutableStateOf<Overlay>(Overlay.Loading("جارٍ تجهيز أفضل مصدر…"))
+    private var overlay by mutableStateOf<Overlay>(Overlay.Loading("نجهّز الفيلم… ثواني"))
     private val ui = PlayerUi()
     private var subScale = 1.1f
 
@@ -181,6 +185,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             queueLabels = i.getStringArrayListExtra("queueLabels") ?: arrayListOf(),
             partyId = i.getStringExtra("partyId"),
             partyHost = i.getBooleanExtra("partyHost", false),
+            startSec = i.getLongExtra("startSec", -1),
         )
         partyId = args.partyId
         isHost = args.partyHost
@@ -432,6 +437,76 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             }
             d.enabled = true
             dynamics = d
+        }
+    }
+
+    override fun shareScene() {
+        val p = player ?: return
+        val sv = playerView.videoSurfaceView as? android.view.SurfaceView ?: return
+        if (!sv.holder.surface.isValid || sv.width == 0) return
+        val line = p.currentCues.cues.mapNotNull { it.text?.toString() }.joinToString("\n").trim()
+        val w = minOf(sv.width, 1600)
+        val h = (w * sv.height / sv.width.toFloat()).toInt()
+        val frame = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        ui.flash = "لحظة…"
+        android.view.PixelCopy.request(sv, frame, { res ->
+            if (res != android.view.PixelCopy.SUCCESS) {
+                ui.flash = "تعذّر التقاط المشهد"
+                lifecycleScope.launch { delay(1500); ui.flash = null }
+                return@request
+            }
+            lifecycleScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+                val card = SceneCard.draw(this@PlayerActivity, frame, line, args.name, args.label)
+                val dir = java.io.File(cacheDir, "share").apply { mkdirs() }
+                val f = java.io.File(dir, "scene.jpg")
+                f.outputStream().use { card.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, it) }
+                val uri = androidx.core.content.FileProvider.getUriForFile(this@PlayerActivity, "$packageName.files", f)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    ui.flash = null
+                    val send = Intent(Intent.ACTION_SEND).setType("image/jpeg").putExtra(Intent.EXTRA_STREAM, uri)
+                        .putExtra(Intent.EXTRA_TEXT, "${args.name} — على 5broz")
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    runCatching { startActivity(Intent.createChooser(send, "شارك المشهد")) }
+                }
+            }
+        }, android.os.Handler(android.os.Looper.getMainLooper()))
+    }
+
+    override fun continueOnTv(to: com.fivebroz.android.data.Device?) {
+        lifecycleScope.launch {
+            val tv = to ?: run {
+                ui.flash = "نبحث عن التلفزيون…"
+                val list = com.fivebroz.android.data.Household.tvs(this@PlayerActivity)
+                ui.flash = null
+                when (list.size) {
+                    0 -> {
+                        ui.flash = "افتح 5broz على التلفزيون أولاً"
+                        delay(2500); ui.flash = null
+                        return@launch
+                    }
+                    1 -> list[0]
+                    else -> { ui.tvChoices = list; return@launch }
+                }
+            }
+            val p = player
+            val pos = (p?.currentPosition ?: 0) / 1000
+            saveNow()
+            val ok = com.fivebroz.android.data.Household.send(
+                tv.id, "play",
+                org.json.JSONObject()
+                    .put("type", args.type).put("metaId", args.metaId).put("name", args.name)
+                    .put("poster", args.poster ?: "").put("videoId", args.videoId).put("label", args.label)
+                    .put("pos", pos),
+            )
+            if (ok) {
+                p?.pause()
+                ui.flash = "يكمل على ${tv.name} ✓"
+                delay(1800)
+                finish()
+            } else {
+                ui.flash = "تعذّر الإرسال — تأكد من الاتصال"
+                delay(2000); ui.flash = null
+            }
         }
     }
 
@@ -929,7 +1004,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
     private var skipped = false
 
     private fun begin() {
-        overlay = Overlay.Loading("جارٍ التحضير…")
+        overlay = Overlay.Loading("نجهّز الفيلم… ثواني")
         tried.clear()
         launchedAt = System.currentTimeMillis()
         subOffset = com.fivebroz.android.data.Prefs.subDelay(args.videoId)
@@ -951,7 +1026,12 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         lifecycleScope.launch {
             subsAsync = async { runCatching { Api.subtitles(args.type, args.videoId) }.getOrDefault(emptyList()) }
             val resumeAsync = async { Db.resumePosition(args.videoId) }
-            val ranked = try {
+            // Downloaded for offline viewing: play the file on the device, no network needed.
+            val offline = com.fivebroz.android.data.Offline.fileFor(this@PlayerActivity, args.videoId)
+            val ranked = if (offline != null) {
+                Log.i("5broz", "TIMING begin offline ${offline.name}")
+                listOf(Stream(url = android.net.Uri.fromFile(offline).toString(), name = "على الجهاز", title = offline.name, source = "offline", filename = offline.name, sizeBytes = offline.length()))
+            } else try {
                 // Usually already fetched while the title page was open.
                 Log.i("5broz", "TIMING begin ${args.type} ${args.videoId}")
                 val list = withTimeoutOrNull(6_000) { StreamPrefetch.take(args.type, args.videoId) }
@@ -975,7 +1055,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                 overlay = Overlay.Failed("لم نجد مصدراً جاهزاً لهذا العنوان الآن.")
                 return@launch
             }
-            playNextGroup(resumeAsync.await())
+            val start = args.startSec.takeIf { it >= 0 }.also { args = args.copy(startSec = -1) }
+            playNextGroup(start ?: resumeAsync.await())
         }
         // The title's page data: backdrop + logo for the loading screen, the episode list for
         // the in-player picker, and (when started from "continue watching") the autoplay queue.
@@ -1050,15 +1131,25 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             return
         }
         player?.stop()
-        if (overlay !is Overlay.Loading) overlay = Overlay.Loading("جارٍ التحضير…")
+        if (overlay !is Overlay.Loading) overlay = Overlay.Loading("نجهّز الفيلم… ثواني")
         torrentJob = lifecycleScope.launch {
             // Live progress while peers are found and the first pieces arrive.
             val ticker = launch {
+                val started = System.currentTimeMillis()
                 while (true) {
                     delay(1000)
                     val st = engine.status()
-                    if (overlay is Overlay.Loading && st.peers > 0) {
-                        overlay = Overlay.Loading("جارٍ التحضير… ${"%.1f".format(java.util.Locale.US, st.bytesPerSec / 1_048_576f)} م.ب/ث")
+                    val secs = (System.currentTimeMillis() - started) / 1000
+                    if (overlay is Overlay.Loading) {
+                        // Plain words and an honest sense of time, instead of a spinner.
+                        overlay = Overlay.Loading(
+                            when {
+                                secs < 8 -> "نجهّز الفيلم… ثواني"
+                                secs < 20 && st.peers > 0 -> "يتحمّل… ${"%.1f".format(java.util.Locale.US, st.bytesPerSec / 1_048_576f)} م.ب/ث — قريب"
+                                secs < 20 -> "نتصل بالمصادر…"
+                                else -> "تأخّر شوي — نجرّب أسرع مصدر تلقائياً"
+                            },
+                        )
                     }
                 }
             }
@@ -1091,7 +1182,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             currentKey = candidates[group[w]].infoHash
             Log.i("5broz", "TIMING first piece in ${System.currentTimeMillis() - t0} ms (race of ${group.size}, winner #${group[w]}) total ${System.currentTimeMillis() - launchedAt} ms file=${engine.fileName}")
             awaitSubs(1200)
-            overlay = Overlay.Loading("لحظات…")
+            overlay = Overlay.Loading("يبدأ الحين…")
             playUrl(local, positionSec)
         }
     }
@@ -1182,7 +1273,7 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
 
     private fun tryNext() {
         val pos = (player?.currentPosition ?: 0) / 1000
-        overlay = Overlay.Loading("نجرّب مصدراً آخر…")
+        overlay = Overlay.Loading("هذا المصدر بطيء — نجرّب غيره تلقائياً…")
         playNextGroup(pos)
     }
 
@@ -1343,6 +1434,8 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
         scrobble("pause")
         // Leaving the app, or closing the picture-in-picture window, stops the film.
         saveNow()
+        val app = applicationContext
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ com.fivebroz.android.ContinueWidget.refresh(app) }, 2500)
         player?.pause()
     }
 

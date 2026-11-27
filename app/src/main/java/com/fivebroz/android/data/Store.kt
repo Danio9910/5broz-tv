@@ -201,13 +201,13 @@ data class ResumeItem(val item: Preview, val videoId: String, val progress: Floa
  * so progress, lists and profiles are shared between web, phone and TV.
  */
 object Db {
-    private const val URL = "https://tnaswphvdieoifaiudhz.supabase.co/rest/v1"
+    const val URL = "https://tnaswphvdieoifaiudhz.supabase.co/rest/v1"
 
     // Public anon key (already shipped in the website bundle).
-    private const val KEY =
+    const val KEY =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRuYXN3cGh2ZGllb2lmYWl1ZGh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM1NTc3MTksImV4cCI6MjEwOTEzMzcxOX0.e88g7l60jaYGJXmgavGtKq2zz8gUdr1K7DNP6AEynWs"
 
-    private val headers = mapOf("apikey" to KEY, "Authorization" to "Bearer $KEY")
+    val headers = mapOf("apikey" to KEY, "Authorization" to "Bearer $KEY")
 
     private fun q(s: String) = URLEncoder.encode(s, "UTF-8")
 

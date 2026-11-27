@@ -73,6 +73,15 @@ object Icons {
     val Episodes = line("episodes", "M3 5h18", "M3 12h18", "M3 19h12")
     val Sound = line("sound", "M11 5 6 9H2v6h4l5 4V5z", "M15.54 8.46a5 5 0 0 1 0 7.07", "M19.07 4.93a10 10 0 0 1 0 14.14")
     val Mute = line("mute", "M11 5 6 9H2v6h4l5 4V5z", "M23 9l-6 6", "M17 9l6 6")
+    val Tv = line("tv", "M3 6h18v11H3z", "M8 21h8", "M12 17v4")
+    val Share = line("share", "M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7", "M16 6l-4-4-4 4", "M12 2v13")
+    val Mic = line("mic", "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z", "M19 10v2a7 7 0 0 1-14 0v-2", "M12 19v3")
+    val Download = line("download", "M12 3v12", "M7 10l5 5 5-5", "M5 21h14")
+    val Remote = line("remote", "M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z", "M12 7h.01", "M10 11h4", "M12 9v4")
+    val Up = line("up", "M6 15l6-6 6 6")
+    val Down = line("down", "M6 9l6 6 6-6")
+    val Left = line("left", "M15 6l-6 6 6 6")
+    val Right = line("right", "M9 6l6 6-6 6")
     val Info = line("info", "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "M12 16v-4", "M12 8h.01")
 
     // player

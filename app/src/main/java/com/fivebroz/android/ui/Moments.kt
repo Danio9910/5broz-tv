@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -275,3 +276,57 @@ fun CollectionShelf(name: String, items: List<Preview>, onOpen: (Preview) -> Uni
     }
 }
 
+
+
+/**
+ * «وش أشوف؟»: three picks for right now instead of fifty — carry on what you started,
+ * something the family likes this week, and something like what you've been watching.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun WhatToWatch(home: com.fivebroz.android.data.Home, resume: List<com.fivebroz.android.data.ResumeItem>, onOpen: (Preview) -> Unit, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val picks = remember(home, resume) {
+        val out = ArrayList<Pair<String, Preview>>()
+        resume.firstOrNull()?.let { out += "كمّل اللي بديته" to it.item }
+        val used = out.map { it.second.id }.toMutableSet()
+        home.top10.firstOrNull { it.id !in used }?.let { out += "الأكثر مشاهدة اليوم" to it; used += it.id }
+        (home.rows.firstOrNull { it.title.startsWith("لأنك شاهدت") } ?: home.rows.firstOrNull())
+            ?.items?.firstOrNull { it.id !in used }?.let { out += "يشبه ذوقك" to it; used += it.id }
+        if (out.size < 3) home.heroes.filter { it.id !in used }.take(3 - out.size).forEach { out += "جديد" to it }
+        out.take(3)
+    }
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onClose, containerColor = C.Ink900) {
+        Column(Modifier.fillMaxWidth().navigationBarsPaddingCompat().padding(horizontal = 18.dp).padding(bottom = 18.dp)) {
+            Text("وش أشوف؟", fontFamily = Amiri, fontSize = 26.sp, color = C.Paper)
+            Text("ثلاث اختيارات للحين — اضغط وابدأ.", color = C.Muted, style = MaterialTheme.typography.bodyMedium)
+            androidx.compose.foundation.layout.Spacer(Modifier.size(14.dp))
+            picks.forEach { (why, p) ->
+                var starting by remember { mutableStateOf(false) }
+                Focusable({
+                    if (!starting) scope.launch {
+                        starting = true
+                        if (!quickPlay(ctx, p)) { onClose(); onOpen(p) }
+                        starting = false
+                        onClose()
+                    }
+                }, Modifier.fillMaxWidth().padding(vertical = 5.dp), RoundedCornerShape(14.dp), lift = 1.02f, ring = false) {
+                    Row(Modifier.fillMaxWidth().background(C.Ink800).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Img(p.poster, Modifier.width(58.dp).height(86.dp).clip(RoundedCornerShape(8.dp)))
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                            Text(why, color = C.Gold, style = MaterialTheme.typography.labelMedium)
+                            Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(listOfNotNull(if (p.type == "series") "مسلسل" else "فيلم", p.year).joinToString(" · "), color = C.Muted, style = MaterialTheme.typography.labelMedium)
+                        }
+                        Box(Modifier.size(44.dp).background(C.Paper, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
+                            if (starting) Text("…", color = C.Ink950) else Ic(Icons.Play, 18.dp, C.Ink950)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun Modifier.navigationBarsPaddingCompat() = this.then(Modifier.navigationBarsPadding())

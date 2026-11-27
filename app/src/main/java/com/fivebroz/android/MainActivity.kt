@@ -1,5 +1,6 @@
 package com.fivebroz.android
 
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -14,6 +15,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import com.fivebroz.android.data.Prefs
@@ -36,7 +39,12 @@ class MainActivity : ComponentActivity() {
         com.fivebroz.android.ui.Look.load()
         // Start the torrent engine's network while the person is still browsing.
         com.fivebroz.android.player.StreamPrefetch.warmEngine(this)
+        // Daily check for new episodes of followed series; refresh the home-screen widget.
+        NewEpisodesWorker.schedule(this)
+        ContinueWidget.refresh(this)
+        askNotificationsOnce()
         // A title link (TV home screen) only opens for a device that's already set up.
+        takeRemoteLink(intent)
         if (intent?.data != null && (!Prefs.gatePassed || Prefs.profileId == null)) intent = intent.setData(null)
         // Phones browse upright like other streaming apps (the player rotates on its own).
         if (packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) &&
@@ -58,11 +66,38 @@ class MainActivity : ComponentActivity() {
                 FiveBrozTheme {
                     Box(Modifier.fillMaxSize().background(C.Ink950)) {
                         AppNav()
+                        com.fivebroz.android.ui.ToastHost(
+                            Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(bottom = 120.dp, start = 16.dp, end = 16.dp),
+                        )
                         var intro by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(savedInstanceState == null) }
                         if (intro) com.fivebroz.android.ui.LaunchIntro { intro = false }
                     }
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        takeRemoteLink(intent)
+    }
+
+    /** fivebroz://remote/<tv id> (from the code on a TV screen): open that TV's remote. */
+    private fun takeRemoteLink(i: Intent?) {
+        val d = i?.data ?: return
+        if (d.scheme == "fivebroz" && d.host == "remote") {
+            com.fivebroz.android.ui.PendingRemote.tv = d.pathSegments.firstOrNull()
+            i.data = null
+        }
+    }
+
+    /** Phones on Android 13+: ask once, so new-episode and download notices can show. */
+    private fun askNotificationsOnce() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)) return
+        val sp = getSharedPreferences("5broz", MODE_PRIVATE)
+        if (sp.getBoolean("asked_notif", false) || Prefs.profileId == null) return
+        sp.edit().putBoolean("asked_notif", true).apply()
+        requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 41)
     }
 }

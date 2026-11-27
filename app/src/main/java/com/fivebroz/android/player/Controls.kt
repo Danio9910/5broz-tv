@@ -104,6 +104,8 @@ class PlayerUi {
     val messages = androidx.compose.runtime.mutableStateListOf<com.fivebroz.android.data.PartyMessage>()
     /** Emoji reactions floating up the screen in a watch party (id to emoji). */
     val floaters = androidx.compose.runtime.mutableStateListOf<Pair<Long, String>>()
+    /** TVs to choose from when more than one is on. */
+    var tvChoices by mutableStateOf<List<com.fivebroz.android.data.Device>>(emptyList())
     var lastPoke = 0L
 }
 
@@ -146,6 +148,10 @@ interface PlayerActions {
     val episodes: List<com.fivebroz.android.data.Episode>
     val currentVideoId: String
     fun playEpisode(e: com.fivebroz.android.data.Episode)
+    /** A still of this moment with the subtitle line on it, to send to the family. */
+    fun shareScene()
+    /** Hand the film over to a TV in the house, at this second. */
+    fun continueOnTv(to: com.fivebroz.android.data.Device? = null)
 }
 
 private fun fmt(ms: Long): String {
@@ -344,6 +350,37 @@ fun PlayerControls(ui: PlayerUi, title: String, isTv: Boolean, a: PlayerActions)
         }
         ui.floaters.forEach { (id, e) -> androidx.compose.runtime.key(id) { Floater(id, e) { ui.floaters.removeAll { it.first == id } } } }
         if (ui.chatOpen) ChatPanel(ui, a)
+        if (ui.tvChoices.isNotEmpty()) TvChoicePanel(ui, a)
+    }
+}
+
+@Composable
+private fun TvChoicePanel(ui: PlayerUi, a: PlayerActions) {
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f))
+            .pointerInput(Unit) { detectTapGestures { ui.tvChoices = emptyList() } },
+    ) {
+        Column(
+            Modifier.align(Alignment.Center).width(340.dp).background(C.Ink900, RoundedCornerShape(16.dp)).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("أي تلفزيون؟", style = MaterialTheme.typography.titleLarge)
+            ui.tvChoices.forEach { d ->
+                Focusable({ ui.tvChoices = emptyList(); a.continueOnTv(d) }, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp), lift = 1.02f, ring = false) { f ->
+                    Row(
+                        Modifier.fillMaxWidth().background(if (f) C.Paper else C.Ink800).padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        com.fivebroz.android.ui.Ic(com.fivebroz.android.ui.Icons.Tv, 20.dp, if (f) C.Ink950 else C.Paper)
+                        Column {
+                            Text(d.name, color = if (f) C.Ink950 else C.Paper, style = MaterialTheme.typography.bodyLarge)
+                            d.profileName?.let { Text("مفتوح على ملف $it", color = if (f) C.Ink950 else C.Muted, style = MaterialTheme.typography.labelMedium) }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -801,6 +838,8 @@ private fun MorePanel(ui: PlayerUi, a: PlayerActions, isTv: Boolean) {
             VSpace(6.dp)
             val I = com.fivebroz.android.ui.Icons
             val rows = buildList {
+                if (!isTv) add(Triple(I.Tv, "كمّل على التلفزيون") { a.continueOnTv() })
+                add(Triple(I.Share, "شارك المشهد") { a.shareScene() })
                 add(Triple(I.Sources, "مصدر آخر") { a.otherSource() })
                 if (!isTv) add(Triple(I.Expand, "فتح في مشغّل آخر") { a.openExternal() })
                 add(Triple(I.Party, if (a.inParty) "الغرفة ${ui.partyCode}" else "غرفة مشاهدة") { a.startParty() })

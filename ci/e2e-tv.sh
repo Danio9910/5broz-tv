@@ -32,6 +32,19 @@ key DPAD_CENTER 10; shot tv4-detail
 key DPAD_DOWN; key DPAD_DOWN; key DPAD_DOWN 2; shot tv4b-detail-lower
 key BACK 3
 key DPAD_RIGHT; key DPAD_RIGHT; key DPAD_RIGHT 2; shot tv5-rail
+# Phone as remote: a phone (this script, through the same household tables) types a search on
+# the TV, presses keys, then opens a title — the TV should follow within a second or two.
+SUPA=https://tnaswphvdieoifaiudhz.supabase.co/rest/v1
+ANON=$(grep -o "eyJ[A-Za-z0-9._-]*" app/src/main/java/com/fivebroz/android/data/Store.kt | head -1)
+DEV=$(adb shell "run-as $PKG cat shared_prefs/5broz.xml" | grep -o 'name="device_id">[^<]*' | cut -d'>' -f2 | tr -d '\r')
+echo "tv device id: $DEV" > $OUT/remote.txt
+sig() { curl -s -X POST "$SUPA/household_signals" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" -H "Content-Type: application/json" -d "[{\"to_device\":\"$DEV\",\"kind\":\"$1\",\"payload\":$2}]" >> $OUT/remote.txt; echo " sent $1 $2" >> $OUT/remote.txt; }
+if [ -n "$DEV" ]; then
+  sig text '{"text":"Inception"}'; sleep 6; shot tv5b-remote-search
+  sig key '{"key":"down"}'; sleep 2; sig key '{"key":"down"}'; sleep 3; shot tv5c-remote-keys
+  sig open '{"type":"movie","id":"tt1375666"}'; sleep 8; shot tv5d-remote-open
+  key BACK 2; key BACK 2
+fi
 # Play a film for a minute, leave, then the TV home screen's "Continue watching" should list it.
 adb shell am start -a android.intent.action.VIEW -d "fivebroz://title/movie/tt0111161" $PKG
 sleep 12; shot tv6-deeplink

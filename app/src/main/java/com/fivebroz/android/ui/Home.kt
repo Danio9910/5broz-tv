@@ -124,9 +124,21 @@ fun HomeScreen(onOpen: (Preview) -> Unit, onProfile: () -> Unit) {
         val order = Prefs.rowOrder
         val rows = (personal + h.rows + addonRows).filter { it.title !in hidden }
             .sortedBy { r -> order.indexOf(r.title).let { if (it < 0) Int.MAX_VALUE else it } }
-        h.copy(rows = rows)
+        // Less to wade through: a title shows once on the page; rows left with too little go.
+        val seen = HashSet<String>().apply { h.heroes.forEach { add(it.id) }; h.top10.forEach { add(it.id) } }
+        val deduped = rows.mapNotNull { r ->
+            val fresh = r.items.filter { seen.add(it.id) }
+            if (fresh.size >= 4) r.copy(items = fresh) else null
+        }
+        h.copy(rows = deduped)
     }
     LaunchedEffect(home, addonRows) { home?.let { h -> lastRowTitles = (h.rows + addonRows).map { it.title } } }
+    // Fetch the likeliest next taps ahead, so their pages open with nothing to wait for.
+    LaunchedEffect(home, resume) {
+        val h = home ?: return@LaunchedEffect
+        kotlinx.coroutines.delay(1500)
+        (resume.map { it.item }.take(4) + h.heroes.take(5) + h.top10.take(5)).distinctBy { it.id }.forEach { Api.prefetchDetail(it.type, it.id) }
+    }
     // Coming back from the player: refresh continue watching.
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { ItemEvents.resumeVersion++ }
 
@@ -206,9 +218,11 @@ private fun PhoneHome(
                 item("end") { VSpace(if (LocalIsTablet.current) 28.dp else BottomBarSpace) }
             }
         }
-        PhoneHeader(solid, onProfile)
+        var picking by remember { mutableStateOf(false) }
+        PhoneHeader(solid, onProfile, onPick = if (home != null) ({ picking = true }) else null)
+        if (picking && home != null) WhatToWatch(home, resume, onOpen) { picking = false }
         if (home != null) OneTimeTip(
-            "longpress", "اضغط مطوّلاً على أي بوستر لخيارات سريعة: قائمتي، شاهدته، اقترح لليلة.",
+            "longpress", "اضغط مطوّلاً على البوستر لخيارات سريعة.",
             Modifier.align(Alignment.BottomCenter).padding(bottom = BottomBarSpace + 8.dp, start = 16.dp, end = 16.dp),
         )
     }
@@ -442,6 +456,7 @@ private fun TvHome(
     LaunchedEffect(focused) {
         delay(260) // don't flash every card while the remote is held down
         shown = focused
+        focused?.let { Api.prefetchDetail(it.type, it.id) }
     }
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }

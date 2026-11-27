@@ -3,12 +3,17 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- One APK for phones, tablets and TVs. -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <application
+        android:name=".FiveBrozApp"
         android:label="5broz"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
@@ -34,6 +39,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="fivebroz" android:host="title" />
             </intent-filter>
+            <!-- A phone that scanned the TV's code opens straight onto its remote. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="fivebroz" android:host="remote" />
+            </intent-filter>
         </activity>
 
         <activity
@@ -44,6 +56,23 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.FiveBroz.Player" />
+
+        <receiver
+            android:name=".ContinueWidget"
+            android:exported="false"
+            android:label="5broz — كمّل">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_continue_info" />
+        </receiver>
+
+        <service
+            android:name=".player.DownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

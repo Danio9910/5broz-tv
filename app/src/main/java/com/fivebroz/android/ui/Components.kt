@@ -556,14 +556,25 @@ fun TitleArt(
 
 private fun Modifier.androidxWidthIn(max: Dp) = this.then(Modifier.widthIn(max = max).fillMaxWidth())
 
-/** Very slow push-in on artwork — the "cinematic" breathing of premium apps. */
+/**
+ * A slow push-in on artwork when it appears — once, then still. (It used to breathe forever,
+ * which redrew a full-screen picture every frame and made scrolling heavy on modest devices.)
+ * Off entirely on low-memory devices.
+ */
 @Composable
 fun Modifier.kenBurns(): Modifier {
-    val t = rememberInfiniteTransition(label = "kb")
-    val s by t.animateFloat(1f, 1.08f, infiniteRepeatable(tween(22000), RepeatMode.Reverse), label = "s")
+    val ctx = LocalContext.current
+    val light = remember {
+        val am = ctx.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val mi = android.app.ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+        am.isLowRamDevice || mi.totalMem < 3_500_000_000L
+    }
+    if (light) return this
+    val s = remember { androidx.compose.animation.core.Animatable(1f) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { s.animateTo(1.05f, tween(9000, easing = androidx.compose.animation.core.LinearOutSlowInEasing)) }
     return this.graphicsLayer {
-        scaleX = s
-        scaleY = s
+        scaleX = s.value
+        scaleY = s.value
     }
 }
 

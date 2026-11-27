@@ -3,6 +3,7 @@ package com.fivebroz.android.data
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.json.JSONObject
+import kotlinx.coroutines.launch
 import java.net.URLEncoder
 
 data class Preview(
@@ -44,6 +45,8 @@ data class Detail(
     val trailer: String? = null, // YouTube key
     /** Scores from other sites (MDBList), e.g. "tomatoes" -> 91. */
     val ratings: Map<String, Double> = emptyMap(),
+    /** Content guide 0 none / 1 some / 2 strong, from TMDB keywords: sex, violence, drugs, scary. */
+    val guide: Map<String, Int> = emptyMap(),
 )
 
 data class CastMember(val id: String, val name: String, val character: String?, val photo: String?)
@@ -144,7 +147,37 @@ object Api {
         )
     }
 
+    // Title pages already fetched (or fetched ahead) this session, so they open instantly.
+    private val detailCache = object : LinkedHashMap<String, Pair<Long, Detail>>(64, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, Pair<Long, Detail>>) = size > 60
+    }
+    private val inflight = HashMap<String, kotlinx.coroutines.Deferred<Detail?>>()
+    private val bg = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+
+    /** Already in memory? (for drawing a title page without waiting) */
+    fun detailNow(type: String, id: String): Detail? = synchronized(detailCache) { detailCache["$type/$id"]?.second }
+
+    /** Fetch quietly ahead of a tap (focused or on screen). */
+    fun prefetchDetail(type: String, id: String) {
+        val k = "$type/$id"
+        synchronized(detailCache) { if (detailCache[k]?.let { System.currentTimeMillis() - it.first < 600_000 } == true || k in inflight) return }
+        bg.launch { runCatching { detail(type, id) } }
+    }
+
     suspend fun detail(type: String, id: String): Detail? {
+        val k = "$type/$id"
+        synchronized(detailCache) {
+            detailCache[k]?.let { (at, d) -> if (System.currentTimeMillis() - at < 600_000) return d }
+        }
+        val job = synchronized(detailCache) {
+            inflight[k] ?: bg.async { runCatching { detailFresh(type, id) }.getOrNull() }.also { inflight[k] = it }
+        }
+        val d = try { job.await() } finally { synchronized(detailCache) { inflight.remove(k) } }
+        if (d != null) synchronized(detailCache) { detailCache[k] = System.currentTimeMillis() to d }
+        return d
+    }
+
+    private suspend fun detailFresh(type: String, id: String): Detail? {
         val m = Net.getObj("$B/api/detail?type=${enc(type)}&id=${enc(id)}").optJSONObject("meta")
             ?: return null
         val base = parsePreview(m) ?: return null
@@ -178,13 +211,23 @@ object Api {
             },
             trailer = m.str("trailer"),
             ratings = m.optJSONObject("ratings")?.let { r -> r.keys().asSequence().associateWith { r.optDouble(it) }.filterValues { !it.isNaN() } } ?: emptyMap(),
+            guide = m.optJSONObject("guide")?.let { g -> g.keys().asSequence().associateWith { g.optInt(it) } } ?: emptyMap(),
         )
     }
 
     private fun kidsParam() = if (Prefs.profileKids) "&kids=1" else ""
 
-    suspend fun search(q: String): List<Preview> =
-        Net.getObj("$B/api/search?q=${enc(q)}${kidsParam()}").optJSONArray("results").mapObjects(::parsePreview)
+    suspend fun search(q: String): List<Preview> = searchAsk(q).first
+
+    /**
+     * A sentence ("فيلم يضحّك قصير للعيال") is understood as a request, not a title.
+     * Returns the results and, when it was understood that way, how it was read.
+     */
+    suspend fun searchAsk(q: String): Pair<List<Preview>, String?> {
+        val sentence = q.trim().split(Regex("\\s+")).size >= 3
+        val o = Net.getObj("$B/api/search?q=${enc(q)}${kidsParam()}${if (sentence) "&ask=1" else ""}")
+        return o.optJSONArray("results").mapObjects(::parsePreview) to o.str("understood")
+    }
 
     suspend fun trending(): List<Preview> = try {
         Net.getObj("$B/api/search?trending=1${kidsParam()}").optJSONArray("results").mapObjects(::parsePreview)
