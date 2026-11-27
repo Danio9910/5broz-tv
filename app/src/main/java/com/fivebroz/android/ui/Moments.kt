@@ -94,8 +94,16 @@ enum class Season(val greeting: String, val line: String) {
 @Composable
 fun SeasonBanner(g: Dp) {
     val s = remember { Season.current() } ?: return
-    val sway = rememberInfiniteTransition(label = "sway")
-    val a by sway.animateFloat(-6f, 6f, infiniteRepeatable(tween(2400), RepeatMode.Reverse), label = "a")
+    // The lanterns sway a few times when home opens, then rest (no endless redrawing).
+    val swing = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        repeat(3) {
+            swing.animateTo(6f, tween(1200))
+            swing.animateTo(-6f, tween(1200))
+        }
+        swing.animateTo(0f, tween(900))
+    }
+    val a = swing.value
     val tint = if (s.green) Color(0xFF1F7A4D) else C.Gold
     Box(
         Modifier.padding(horizontal = g, vertical = 8.dp).fillMaxWidth().height(86.dp)
@@ -190,8 +198,12 @@ fun YearRecapCard(g: Dp, always: Boolean = false, onOpen: (Preview) -> Unit = {}
     LaunchedEffect(Unit) { r = Db.yearRecap() }
     val y = r ?: return
     if (y.titles == 0 && !always) return
-    val shimmer = rememberInfiniteTransition(label = "recap")
-    val x by shimmer.animateFloat(-0.4f, 1.4f, infiniteRepeatable(tween(3200)), label = "x")
+    // one gold glint runs along the border, twice
+    val glint = remember { androidx.compose.animation.core.Animatable(-0.4f) }
+    LaunchedEffect(Unit) {
+        repeat(2) { glint.snapTo(-0.4f); glint.animateTo(1.4f, tween(3200)) }
+    }
+    val x = glint.value
     Box(
         Modifier.padding(horizontal = g, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp))
             .background(Brush.linearGradient(listOf(Color(0xFF2A1F0E), C.Ink900, Color(0xFF1A1426))))

@@ -1429,11 +1429,11 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
                         if (ui.visible) {
                             // a touch brought the controls back: give them 5 s, then the pause screen returns
                             pausedLong = false
-                            delay(5_000)
+                            delay(12_000)
                             pausedLong = true
                             ui.visible = false
                         } else if (!pausedLong) {
-                            delay(5_000)
+                            delay(8_000)
                             pausedLong = true
                         }
                     }

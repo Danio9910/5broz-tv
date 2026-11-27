@@ -110,7 +110,7 @@ sleep 6
 adb shell input tap $CX $CY; sleep 0.7      # show controls
 adb shell input tap $CX $CY; sleep 2        # big centre button = pause
 shot 6a-paused
-sleep 8; shot 6a2-pause-screen
+sleep 14; shot 6a2-pause-screen
 adb shell input tap $CX $CY; sleep 1.5       # bring the controls back
 tap_text "السرعة"
 sleep 2; shot 6d-speed
