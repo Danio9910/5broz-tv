@@ -640,7 +640,12 @@ class PlayerActivity : ComponentActivity(), PlayerActions {
             val resumeAsync = async { Db.resumePosition(args.videoId) }
             val ranked = try {
                 // Usually already fetched while the title page was open.
-                rank(StreamPrefetch.take(args.type, args.videoId) ?: Api.streams(args.type, args.videoId), isTv).map { it.stream }
+                Log.i("5broz", "TIMING begin ${args.type} ${args.videoId}")
+                val list = withTimeoutOrNull(6_000) { StreamPrefetch.take(args.type, args.videoId) }
+                    ?: withTimeoutOrNull(20_000) { Api.streams(args.type, args.videoId) }
+                    ?: withTimeoutOrNull(20_000) { Api.streams(args.type, args.videoId) } // one retry
+                    ?: emptyList()
+                rank(list, isTv).map { it.stream }
             } catch (_: Exception) {
                 emptyList()
             }
