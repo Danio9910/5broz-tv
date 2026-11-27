@@ -438,5 +438,3 @@ private fun ProfileStage(p: Profile, size: androidx.compose.ui.unit.Dp, onDone: 
     }
 }
 
-private fun Modifier.scale(s: Float) = this.then(androidx.compose.ui.draw.scale(s))
-private fun Modifier.alpha(a: Float) = this.then(androidx.compose.ui.draw.alpha(a))
