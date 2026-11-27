@@ -430,7 +430,15 @@ fun PosterRow(
     val w = posterWidth()
     Column(Modifier.fillMaxWidth().padding(bottom = if (LocalIsTv.current) 18.dp else 22.dp)) {
         SectionTitle(title, Modifier.padding(horizontal = gutter, vertical = 6.dp))
+        // When the page scrolls a new row into view, its first cards are already built in the
+        // gaps between frames (nested prefetch) instead of all at once on arrival — that "all at
+        // once" was the occasional 35–45 ms frame measured on a Huawei Y9.
+        @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+        val rowState = androidx.compose.foundation.lazy.rememberLazyListState(
+            prefetchStrategy = androidx.compose.foundation.lazy.LazyListPrefetchStrategy(nestedPrefetchItemCount = 5),
+        )
         LazyRow(
+            state = rowState,
             contentPadding = PaddingValues(horizontal = gutter, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(if (ranked) 4.dp else 10.dp),
         ) {
