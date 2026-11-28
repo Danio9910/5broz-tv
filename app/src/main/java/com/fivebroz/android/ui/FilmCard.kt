@@ -101,8 +101,9 @@ fun rememberGlow(url: String?): Color {
         val sw = p.vibrantSwatch ?: p.darkVibrantSwatch ?: p.mutedSwatch ?: p.dominantSwatch ?: return@LaunchedEffect
         val base = Color(sw.rgb)
         val l = 0.3f * base.red + 0.59f * base.green + 0.11f * base.blue
-        val f = if (l > 0.42f) 0.42f / l else 1f
-        c = Color(base.red * f, base.green * f, base.blue * f)
+        // deep enough for white text, bright enough to glow
+        val f = when { l > 0.42f -> 0.42f / l; l in 0.01f..0.24f -> 0.24f / l; else -> 1f }
+        c = Color(minOf(1f, base.red * f), minOf(1f, base.green * f), minOf(1f, base.blue * f))
     }
     val a by animateColorAsState(c, tween(700), label = "glow")
     return a
