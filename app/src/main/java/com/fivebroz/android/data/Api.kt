@@ -120,17 +120,19 @@ object Api {
     }
 
     /** The last home page this device loaded, so the app opens instantly while the fresh one arrives. */
-    fun cachedHome(kids: Boolean): Home? = try {
-        Prefs.cacheFile(if (kids) "home-kids.json" else "home.json")?.takeIf { it.exists() }?.readText()?.let { parseHome(JSONObject(it)) }
+    private fun homeFile(kids: Boolean, tab: String) = if (kids) "home-kids.json" else if (tab.isBlank()) "home.json" else "home-$tab.json"
+
+    fun cachedHome(kids: Boolean, tab: String = ""): Home? = try {
+        Prefs.cacheFile(homeFile(kids, tab))?.takeIf { it.exists() }?.readText()?.let { parseHome(JSONObject(it)) }
     } catch (_: Exception) {
         null
     }
 
-    suspend fun home(kids: Boolean): Home {
-        val raw = Net.get(if (kids) "$B/api/home?kids=1" else "$B/api/home")
+    suspend fun home(kids: Boolean, tab: String = ""): Home {
+        val raw = Net.get(if (kids) "$B/api/home?kids=1" else if (tab.isBlank()) "$B/api/home" else "$B/api/home?tab=$tab")
         val h = parseHome(JSONObject(raw))
         if (h.heroes.isNotEmpty() || h.rows.isNotEmpty()) {
-            runCatching { Prefs.cacheFile(if (kids) "home-kids.json" else "home.json")?.writeText(raw) }
+            runCatching { Prefs.cacheFile(homeFile(kids, tab))?.writeText(raw) }
         }
         return h
     }

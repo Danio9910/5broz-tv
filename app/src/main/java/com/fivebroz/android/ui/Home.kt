@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -90,16 +91,18 @@ fun HomeScreen(onOpen: (Preview) -> Unit, onProfile: () -> Unit) {
     val kids = Prefs.profileKids
     val family = kids || Prefs.profileFamily
     // Open instantly on what this device saw last time; the fresh page replaces it a moment later.
-    var home by remember { mutableStateOf<Home?>(Api.cachedHome(family)) }
+    // Tabs (not on family/kids profiles, whose home is already one gentle kind of thing)
+    var tab by remember { mutableStateOf(if (family) "" else Prefs.homeTab) }
+    var home by remember { mutableStateOf<Home?>(Api.cachedHome(family, tab)) }
     var failed by remember { mutableStateOf(false) }
     var resume by remember { mutableStateOf<List<ResumeItem>>(emptyList()) }
     var attempt by remember { mutableStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(family, attempt) {
+    LaunchedEffect(family, attempt, tab) {
         failed = false
         try {
-            home = Api.home(family)
+            home = Api.home(family, tab)
         } catch (_: Exception) {
             if (home == null) failed = true
         }
@@ -109,12 +112,12 @@ fun HomeScreen(onOpen: (Preview) -> Unit, onProfile: () -> Unit) {
     // Rows from the household's addons (not on kids profiles: addon catalogs aren't filtered).
     var addonRows by remember { mutableStateOf<List<com.fivebroz.android.data.Row>>(emptyList()) }
     LaunchedEffect(attempt, ItemEvents.libraryVersion) {
-        if (!kids) addonRows = Api.traktRows() + Api.addonRows()
+        if (!kids && tab.isBlank()) addonRows = Api.traktRows() + Api.addonRows()
     }
     // "Because you watched …": titles like the ones this profile is in the middle of.
     var personal by remember { mutableStateOf<List<com.fivebroz.android.data.Row>>(emptyList()) }
     LaunchedEffect(resume.map { it.item.id }.take(2)) {
-        if (kids) return@LaunchedEffect
+        if (kids || tab.isNotBlank()) return@LaunchedEffect
         personal = resume.distinctBy { it.item.id }.take(2).mapNotNull { r ->
             val d = runCatching { Api.detail(r.item.type, r.item.id) }.getOrNull() ?: return@mapNotNull null
             d.related.takeIf { it.size >= 4 }?.let { com.fivebroz.android.data.Row("لأنك شاهدت ${d.base.name}", it) }
@@ -124,7 +127,7 @@ fun HomeScreen(onOpen: (Preview) -> Unit, onProfile: () -> Unit) {
         // The person's own row order and hidden rows (Settings → الرئيسية).
         val hidden = Prefs.hiddenRows
         val order = Prefs.rowOrder
-        val rows = (personal + h.rows + addonRows).filter { it.title !in hidden }
+        val rows = (if (tab.isBlank()) personal + h.rows + addonRows else h.rows).filter { it.title !in hidden }
             .sortedBy { r -> order.indexOf(r.title).let { if (it < 0) Int.MAX_VALUE else it } }
         // Less to wade through: a title shows once on the page; rows left with too little go.
         val seen = HashSet<String>().apply { h.heroes.forEach { add(it.id) }; h.top10.forEach { add(it.id) } }
@@ -154,12 +157,19 @@ fun HomeScreen(onOpen: (Preview) -> Unit, onProfile: () -> Unit) {
         }
         return
     }
-    if (LocalIsTv.current) TvHome(shown, resume, kids, family, onOpen)
+    val onTab: ((String) -> Unit)? = if (family) null else { t ->
+        if (t != tab) {
+            tab = t
+            Prefs.homeTab = t
+            home = Api.cachedHome(family, t) // instant if seen before; otherwise the skeleton
+        }
+    }
+    if (LocalIsTv.current) TvHome(shown, resume, kids, family, onOpen, tab, onTab)
     else {
         androidx.compose.material3.pulltorefresh.PullToRefreshBox(
             isRefreshing = refreshing,
             onRefresh = { refreshing = true; attempt++ },
-        ) { PhoneHome(shown, resume, kids, family, onOpen, onProfile) }
+        ) { PhoneHome(shown, resume, kids, family, onOpen, onProfile, tab, onTab) }
     }
 }
 
@@ -173,6 +183,8 @@ private fun PhoneHome(
     family: Boolean,
     onOpen: (Preview) -> Unit,
     onProfile: () -> Unit,
+    tab: String = "",
+    onTab: ((String) -> Unit)? = null,
 ) {
     val g = gutter()
     val list = rememberLazyListState()
@@ -199,8 +211,14 @@ private fun PhoneHome(
     Box(Modifier.fillMaxSize().background(sky)) {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
             item("hero") {
-                if (home == null) Skeleton(Modifier.statusBarsPadding().padding(top = 60.dp).padding(horizontal = 36.dp).fillMaxWidth().height(heroH), RoundedCornerShape(34.dp))
-                else if (home.heroes.isNotEmpty()) PhoneHero(home.heroes, heroH, tablet, onOpen) { heroItem = it }
+                Column {
+                    if (onTab != null) {
+                        Spacer(Modifier.statusBarsPadding().height(62.dp))
+                        HomeTabs(tab, onTab, g)
+                    }
+                    if (home == null) Skeleton(Modifier.then(if (onTab == null) Modifier.statusBarsPadding().padding(top = 60.dp) else Modifier.padding(top = 18.dp)).padding(horizontal = 36.dp).fillMaxWidth().height(heroH), RoundedCornerShape(34.dp))
+                    else if (home.heroes.isNotEmpty()) PhoneHero(home.heroes, heroH, tablet, onOpen, chipsAbove = onTab != null) { heroItem = it }
+                }
             }
             if (home == null) {
                 item("sk") { SkeletonRows(g) }
@@ -281,7 +299,7 @@ private fun JoinChip(g: Dp) {
 
 /** Swipeable poster hero — tall artwork, title and one clear action, centred. */
 @Composable
-private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (Preview) -> Unit, onPage: (Preview?) -> Unit = {}) {
+private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (Preview) -> Unit, chipsAbove: Boolean = false, onPage: (Preview?) -> Unit = {}) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var starting by remember { mutableStateOf(false) }
@@ -311,9 +329,9 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
                         starting = false
                     }
                 },
-                modifier = Modifier.statusBarsPadding().padding(horizontal = 36.dp),
+                modifier = (if (chipsAbove) Modifier else Modifier.statusBarsPadding()).padding(horizontal = 36.dp),
                 maxWidth = if (wide) 320.dp else 270.dp,
-                topRoom = 60.dp,
+                topRoom = if (chipsAbove) 18.dp else 60.dp,
                 artRatio = 0.9f,
                 artModifier = Modifier.clickable { onOpen(it) },
             ) {
@@ -403,11 +421,14 @@ private fun TvHome(
     kids: Boolean,
     family: Boolean,
     onOpen: (Preview) -> Unit,
+    tab: String = "",
+    onTab: ((String) -> Unit)? = null,
 ) {
     val g = gutter()
     val ctx = androidx.compose.ui.platform.LocalContext.current
     if (home == null) {
-        Column(Modifier.fillMaxSize().padding(top = 40.dp)) {
+        Column(Modifier.fillMaxSize().padding(top = 18.dp)) {
+            if (onTab != null) { HomeTabs(tab, onTab, g); VSpace(14.dp) }
             Skeleton(Modifier.padding(horizontal = g).size(420.dp, 44.dp))
             VSpace(14.dp)
             Skeleton(Modifier.padding(horizontal = g).size(300.dp, 18.dp))
@@ -458,8 +479,9 @@ private fun TvHome(
 
         Column(Modifier.fillMaxSize()) {
             // Info for the focused title.
+            if (onTab != null) Box(Modifier.padding(top = 18.dp)) { HomeTabs(tab, onTab, g) }
             Column(
-                Modifier.fillMaxWidth(0.55f).height(230.dp).padding(start = g, top = 44.dp),
+                Modifier.fillMaxWidth(0.55f).height(if (onTab != null) 200.dp else 230.dp).padding(start = g, top = if (onTab != null) 14.dp else 44.dp),
             ) {
                 val p = shown
                 if (p != null) {
@@ -586,3 +608,34 @@ private fun TvWideRow(
 /** Requesting focus on the wrapper moves it into the card inside. */
 private fun Modifier.focusRequesterSafe(fr: FocusRequester): Modifier =
     this.focusRequester(fr).focusGroup()
+
+
+private val TabNames = listOf("" to "الكل", "movies" to "أفلام", "series" to "مسلسلات", "anime" to "أنمي", "cartoon" to "كرتون", "arabic" to "عربي")
+
+/** أفلام · مسلسلات · أنمي …: each one a whole home of its own. */
+@Composable
+private fun HomeTabs(tab: String, onTab: (String) -> Unit, g: Dp) {
+    val tv = LocalIsTv.current
+    androidx.compose.foundation.lazy.LazyRow(
+        contentPadding = PaddingValues(horizontal = g),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(TabNames.size) { i ->
+            val (key, name) = TabNames[i]
+            val on = key == tab
+            Focusable({ onTab(key) }, shape = RoundedCornerShape(50), lift = 1.05f, ring = false) { f ->
+                Text(
+                    name,
+                    Modifier
+                        .background(
+                            when { f -> C.Paper; on -> C.Paper.copy(alpha = 0.92f); else -> Color.White.copy(alpha = 0.1f) },
+                            RoundedCornerShape(50),
+                        )
+                        .padding(horizontal = if (tv) 20.dp else 16.dp, vertical = if (tv) 9.dp else 7.dp),
+                    color = if (f || on) C.Ink950 else C.Paper,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
+}

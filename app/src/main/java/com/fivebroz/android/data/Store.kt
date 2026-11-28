@@ -155,6 +155,10 @@ object Prefs {
     var trailerBackground: Boolean
         get() = sp.getBoolean("trailerBg", false)
         set(v) = sp.edit().putBoolean("trailerBg", v).apply()
+    /** The home tab this profile was on last ("" = everything). */
+    var homeTab: String
+        get() = sp.getString(k("homeTab"), "") ?: ""
+        set(v) = sp.edit().putString(k("homeTab"), v).apply()
     var heroTrailer: Boolean
         get() = sp.getBoolean("heroTrailer", false)
         set(v) = sp.edit().putBoolean("heroTrailer", v).apply()
