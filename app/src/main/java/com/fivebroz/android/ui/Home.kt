@@ -437,7 +437,9 @@ private fun TvHome(
         }
     }
 
-    val tvGlow = rememberAmbient(shown?.background ?: shown?.poster)
+    // the film's own colour, deepened so the rows stay easy to read
+    val tvLit = rememberGlow(shown?.let { Cuts.now(it.id)?.poster ?: it.poster ?: it.background })
+    val tvGlow = Color(tvLit.red * 0.55f + 0.02f, tvLit.green * 0.55f + 0.02f, tvLit.blue * 0.55f + 0.03f)
     // Like the best TV apps (Nuvio, Apple TV): the picture fills the top corner opposite the text
     // and melts into a solid page. The words sit on plain dark (easy to read), and far less is
     // redrawn as the remote moves — the full-screen moving backdrop was the heaviest thing here.
