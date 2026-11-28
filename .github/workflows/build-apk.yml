@@ -2,7 +2,7 @@ name: Build 5broz APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, design ]
   workflow_dispatch:
 
 permissions:
@@ -41,7 +41,7 @@ jobs:
           fi
 
       - name: Publish to Release (stable direct link)
-        if: steps.apk.outputs.signed == 'true'
+        if: steps.apk.outputs.signed == 'true' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
