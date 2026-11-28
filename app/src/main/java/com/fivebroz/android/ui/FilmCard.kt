@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -181,7 +182,7 @@ fun FilmCard(
                 // the character, unclipped, standing out of the top edge
                 if (cut != null && lift != null) {
                     Box(
-                        Modifier.fillMaxWidth().height(artH + up).offset(y = -up)
+                        Modifier.fillMaxWidth().wrapContentHeight(Alignment.Top, unbounded = true).height(artH + up).offset(y = -up)
                             .graphicsLayer {
                                 compositingStrategy = CompositingStrategy.Offscreen
                                 translationY = (1f - stepUp.value) * 26.dp.toPx()
