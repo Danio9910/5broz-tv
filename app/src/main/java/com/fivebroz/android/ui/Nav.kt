@@ -210,6 +210,7 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
     var tvMenu by remember { mutableStateOf(false) }
     var remote by remember { mutableStateOf<String?>(null) } // "" = pick a TV
     var downloads by remember { mutableStateOf(false) }
+    var importing by remember { mutableStateOf(false) }
     var tvCode by remember { mutableStateOf(false) }
     // A scanned TV code opens that TV's remote.
     androidx.compose.runtime.LaunchedEffect(PendingRemote.tv) {
@@ -320,6 +321,7 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
             onSettings = { menu = false; settings = true },
             onRemote = { menu = false; remote = "" },
             onDownloads = { menu = false; downloads = true },
+            onImport = { menu = false; importing = true },
         )
     }
     remote?.let { pre ->
@@ -327,6 +329,12 @@ private fun MainScreen(onOpen: (Preview) -> Unit, onSwitchProfile: () -> Unit) {
             onDismissRequest = { remote = null },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
         ) { RemoteScreen(pre.ifBlank { null }) { remote = null } }
+    }
+    if (importing) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { importing = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) { ImportScreen { importing = false } }
     }
     if (downloads) {
         androidx.compose.ui.window.Dialog(
@@ -502,7 +510,7 @@ private fun PhoneBottomBar(tab: Tab, onTab: (Tab) -> Unit) {
 /** Phone: tapping your avatar opens a small sheet instead of leaving straight away. */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () -> Unit, onAddons: () -> Unit, onSettings: () -> Unit, onRemote: () -> Unit, onDownloads: () -> Unit) {
+private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () -> Unit, onAddons: () -> Unit, onSettings: () -> Unit, onRemote: () -> Unit, onDownloads: () -> Unit, onImport: () -> Unit = {}) {
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Ink900) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -515,6 +523,7 @@ private fun ProfileMenu(onDismiss: () -> Unit, onSwitch: () -> Unit, onJoin: () 
             Spacer(Modifier.height(18.dp))
             MenuRow(Icons.Remote, "ريموت التلفزيون", onRemote)
             MenuRow(Icons.Download, "التنزيلات", onDownloads)
+            if (!Prefs.profileKids) MenuRow(Icons.Sources, "انقل من ستريميو أو نوفيو", onImport)
             MenuRow(Icons.Join, "انضمام لغرفة مشاهدة", onJoin)
             MenuRow(Icons.Party, "تبديل الملف", onSwitch)
             if (!Prefs.profileKids) MenuRow(Icons.Sources, "الإضافات", onAddons)

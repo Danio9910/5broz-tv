@@ -622,6 +622,51 @@ object Db {
         }
     }
 
+    /** Many rows at once (an import): one request per few hundred rows. */
+    private suspend fun upsertMany(table: String, conflict: String, rows: List<JSONObject>) {
+        rows.chunked(300).forEach { part ->
+            Net.send(
+                "POST",
+                "$URL/$table?on_conflict=$conflict",
+                JSONArray(part).toString(),
+                headers + mapOf("Prefer" to "resolution=merge-duplicates,return=minimal"),
+            )
+        }
+    }
+
+    /** What came over from Stremio / Nuvio: My List, where each thing stopped, what was finished. */
+    suspend fun importAll(library: JSONArray, progress: JSONArray, watched: JSONArray) {
+        val p = pid ?: throw IllegalStateException("اختر ملفك أولاً.")
+        val now = Instant.now()
+        fun objs(a: JSONArray) = (0 until a.length()).mapNotNull { a.optJSONObject(it) }
+        upsertMany(
+            "library_items", "profile_id,meta_id",
+            objs(library).map {
+                JSONObject().put("profile_id", p).put("meta_id", it.getString("id")).put("type", it.optString("type", "movie"))
+                    .put("name", it.optString("name")).put("poster", it.opt("poster") ?: JSONObject.NULL).put("added_at", now.toString())
+            },
+        )
+        // finished first, then the paused ones on top (an episode can't be both)
+        upsertMany(
+            "watch_progress", "profile_id,video_id",
+            objs(watched).mapIndexed { i, it ->
+                JSONObject().put("profile_id", p).put("meta_id", it.getString("metaId")).put("video_id", it.getString("videoId"))
+                    .put("type", it.optString("type", "movie")).put("name", it.optString("name")).put("poster", it.opt("poster") ?: JSONObject.NULL)
+                    .put("position_sec", 1).put("duration_sec", 1).put("finished", true)
+                    .put("updated_at", now.minusSeconds(86400L * 30 + i).toString())
+            },
+        )
+        upsertMany(
+            "watch_progress", "profile_id,video_id",
+            objs(progress).mapIndexed { i, it ->
+                JSONObject().put("profile_id", p).put("meta_id", it.getString("metaId")).put("video_id", it.getString("videoId"))
+                    .put("type", it.optString("type", "movie")).put("name", it.optString("name")).put("poster", it.opt("poster") ?: JSONObject.NULL)
+                    .put("position_sec", it.optLong("position")).put("duration_sec", it.optLong("duration")).put("finished", false)
+                    .put("updated_at", now.minusSeconds(i.toLong()).toString())
+            },
+        )
+    }
+
     suspend fun setInLibrary(item: Preview, saved: Boolean) {
         val p = pid ?: return
         try {
