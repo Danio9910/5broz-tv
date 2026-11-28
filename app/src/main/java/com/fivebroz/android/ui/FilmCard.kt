@@ -201,8 +201,8 @@ fun FilmCard(
             // the card's body
             Column(
                 Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(bottomStart = 34.dp, bottomEnd = 34.dp))
-                    .background(CardInk)
+                    // a shaped background, not a clip: the orb has to overhang the art above
+                    .background(CardInk, RoundedCornerShape(bottomStart = 34.dp, bottomEnd = 34.dp))
                     .padding(bottom = 22.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
