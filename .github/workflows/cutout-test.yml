@@ -1,0 +1,20 @@
+name: Cut-out test (one-off)
+on:
+  push:
+    branches: [ cutout-test ]
+    paths: [ 'ci/cutout/run.py', '.github/workflows/cutout-test.yml' ]
+permissions:
+  contents: write
+jobs:
+  cut:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install "rembg[cpu]" pillow numpy scipy
+      - run: python ci/cutout/run.py
+      - run: |
+          git config user.name "cutout-test" && git config user.email "actions@users.noreply.github.com"
+          git add ci/cutout/out && git commit -m "cut-out test results [skip ci]" && git push
