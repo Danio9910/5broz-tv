@@ -10,7 +10,7 @@ def get(u):
 
 home = json.loads(get("https://www.5broz.com/api/home"))
 heroes = home["heroes"][:5]
-models = {m: new_session(m) for m in ["birefnet-general", "isnet-general-use"]}
+models = {m: new_session(m) for m in ["birefnet-general"]}
 
 def tint(im):
     a = np.asarray(im.convert("RGB").resize((20, 20))).reshape(-1, 3).astype(float)
@@ -62,12 +62,15 @@ def stats(cut):
     return {"area": round(float(area), 3), "top": round(float(top), 3), "blobs": big}
 
 report = []
+json.dump(heroes, open("ci/cutout/out/heroes.json", "w"), ensure_ascii=False)
 for i, h in enumerate(heroes):
     poster = Image.open(io.BytesIO(get(h["poster"].replace("/w500/", "/w780/")))).convert("RGB")
     t = tint(poster)
     row = [poster.resize((430, int(430 * poster.height / poster.width)))]
     for name, s in models.items():
         cut = remove(poster, session=s)
+        cut.save(f"ci/cutout/out/cut{i}.webp", quality=88)
+        poster.save(f"ci/cutout/out/poster{i}.jpg", quality=88)
         st = stats(cut); report.append({"film": h["name"], "model": name, **st})
         chk = Image.new("RGB", cut.size, (40, 40, 48)); chk.paste(cut, (0, 0), cut)
         row.append(chk.resize(row[0].size))
