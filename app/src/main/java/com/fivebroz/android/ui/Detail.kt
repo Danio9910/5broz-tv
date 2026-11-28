@@ -690,56 +690,69 @@ private fun TvDetail(
     val playFr = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { playFr.requestFocus() } }
 
-    val ambient = rememberAmbient(d.base.background ?: d.base.poster)
+    val glow = rememberGlow(Cuts.now(d.base.id)?.poster ?: d.base.poster ?: d.base.background)
     val artKey = remember { Shared.fresh() }
-    Box(Modifier.fillMaxSize().background(ambient)) {
-        Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().sharedArt(artKey))
+    Box(Modifier.fillMaxSize().background(C.Ink950)) {
+        Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().graphicsLayer { alpha = 0.35f })
         TrailerBackground(d.trailer, Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to C.Ink950.copy(alpha = 0.2f), 0.5f to C.Ink950.copy(alpha = 0.7f), 1f to C.Ink950)))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to C.Ink950)))
+        Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(glow.copy(alpha = 0.75f), C.Ink950.copy(alpha = 0.6f)), radius = 1400f)))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to C.Ink950)))
 
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides MinimalScroll) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 60.dp)) {
             item("head") {
-                Column(Modifier.fillMaxWidth(0.66f).padding(start = g, top = 70.dp, bottom = 26.dp)) {
-                    TitleArt(d.base.name, d.base.logo, 120.dp, 420.dp, MaterialTheme.typography.displayLarge)
-                    VSpace(10.dp)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        d.base.rating?.let { Text("★ $it", color = C.Gold, style = MaterialTheme.typography.labelLarge) }
-                        Meta(listOf(d.base.year, d.runtime, d.genres.take(3).joinToString("، ").takeIf { it.isNotBlank() }))
-                        d.certification?.let { CertBadge(it) }
-                    }
-                    ratingsLine(d.ratings)?.let { Text(it, Modifier.padding(top = 4.dp), color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                    guideLine(d.guide)?.let { Text(it, Modifier.padding(top = 4.dp), color = if (d.guide.values.any { v -> v >= 2 }) C.Gold else C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-                    if (!d.base.description.isNullOrBlank()) {
-                        VSpace(12.dp)
-                        Text(d.base.description, style = MaterialTheme.typography.bodyLarge, color = C.Paper.copy(alpha = 0.86f), maxLines = 4, overflow = TextOverflow.Ellipsis)
-                    }
-                    if (d.cast.isNotEmpty()) {
-                        VSpace(8.dp)
-                        Text("بطولة: " + d.cast.take(5).joinToString("، "), color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    VSpace(22.dp)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (m.mainText != null && m.mainVideo != null) {
-                            GoldButton(m.mainText, { play(m.mainVideo, m.mainLabel, null) }, focusRequester = playFr, icon = Icons.Play)
+                Row(Modifier.fillMaxWidth().padding(start = g, end = g, top = 28.dp, bottom = 18.dp), verticalAlignment = Alignment.Bottom) {
+                    Column(Modifier.weight(1f).padding(bottom = 30.dp)) {
+                        TitleArt(d.base.name, d.base.logo, 110.dp, 420.dp, MaterialTheme.typography.displayLarge)
+                        VSpace(10.dp)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            d.base.rating?.let { Text("★ $it", color = C.Gold, style = MaterialTheme.typography.labelLarge) }
+                            Meta(listOf(d.base.year, d.runtime, d.genres.take(3).joinToString("، ").takeIf { it.isNotBlank() }))
+                            d.certification?.let { CertBadge(it) }
                         }
-                        GoldButton(
-                            if (saved) "في قائمتي" else "قائمتي", toggleSaved, filled = false,
-                            icon = if (saved) Icons.Check else Icons.Plus,
-                            focusRequester = if (m.mainText == null) playFr else null,
-                        )
-                        GoldButton(
-                            when (x.rating) { 1 -> "أعجبني"; -1 -> "ليس لي"; else -> "تقييم" }, { x.openSheet("rate") }, filled = false,
-                            icon = when (x.rating) { 1 -> Icons.ThumbUp; -1 -> Icons.ThumbDown; else -> Icons.Star },
-                        )
-                        x.onTrailer?.let { GoldButton("الإعلان", it, filled = false, icon = Icons.Trailer) }
-                        GoldButton("المزيد", { x.openSheet("more") }, filled = false, icon = Icons.More)
+                        ratingsLine(d.ratings)?.let { Text(it, Modifier.padding(top = 4.dp), color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        guideLine(d.guide)?.let { Text(it, Modifier.padding(top = 4.dp), color = if (d.guide.values.any { v -> v >= 2 }) C.Gold else C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                        if (!d.base.description.isNullOrBlank()) {
+                            VSpace(12.dp)
+                            Text(d.base.description, style = MaterialTheme.typography.bodyLarge, color = C.Paper.copy(alpha = 0.86f), maxLines = 4, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (d.cast.isNotEmpty()) {
+                            VSpace(8.dp)
+                            Text("بطولة: " + d.cast.take(5).joinToString("، "), color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        VSpace(20.dp)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            GoldButton(
+                                if (saved) "في قائمتي" else "قائمتي", toggleSaved, filled = false,
+                                icon = if (saved) Icons.Check else Icons.Plus,
+                                focusRequester = if (m.mainText == null) playFr else null,
+                            )
+                            GoldButton(
+                                when (x.rating) { 1 -> "أعجبني"; -1 -> "ليس لي"; else -> "تقييم" }, { x.openSheet("rate") }, filled = false,
+                                icon = when (x.rating) { 1 -> Icons.ThumbUp; -1 -> Icons.ThumbDown; else -> Icons.Star },
+                            )
+                            x.onTrailer?.let { GoldButton("الإعلان", it, filled = false, icon = Icons.Trailer) }
+                            GoldButton("المزيد", { x.openSheet("more") }, filled = false, icon = Icons.More)
+                        }
+                        if (available == false || !m.canPlay) {
+                            VSpace(12.dp)
+                            Text(unavailableText(m), color = C.Muted, style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
-                    if (available == false || !m.canPlay) {
-                        VSpace(12.dp)
-                        Text(unavailableText(m), color = C.Muted, style = MaterialTheme.typography.bodyMedium)
-                    }
+                    androidx.compose.foundation.layout.Spacer(Modifier.width(48.dp))
+                    FilmCard(
+                        id = d.base.id,
+                        poster = d.base.poster ?: d.base.background,
+                        glow = glow,
+                        playLabel = m.mainText,
+                        playSub = null,
+                        onPlay = if (m.mainText != null && m.mainVideo != null) ({ play(m.mainVideo, m.mainLabel, null) }) else null,
+                        modifier = Modifier.width(250.dp),
+                        maxWidth = 250.dp,
+                        topRoom = 12.dp,
+                        artModifier = Modifier.sharedArt(artKey),
+                        playFocus = if (m.mainText != null) playFr else null,
+                    ) {}
                 }
             }
             if (m.episodes.isNotEmpty()) {

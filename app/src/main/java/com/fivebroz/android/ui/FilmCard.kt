@@ -128,6 +128,7 @@ fun FilmCard(
     maxWidth: Dp = 440.dp,
     topRoom: Dp = 64.dp,
     artModifier: Modifier = Modifier,
+    playFocus: androidx.compose.ui.focus.FocusRequester? = null,
     body: @Composable ColumnScope.() -> Unit,
 ) {
     val ctx = LocalContext.current
@@ -208,7 +209,7 @@ fun FilmCard(
                 if (onPlay != null) {
                     // the orb sits half over the art
                     Column(Modifier.fillMaxWidth().pullUp(46.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        PlayOrb(onPlay, glow, playIcon)
+                        PlayOrb(onPlay, glow, playIcon, focusRequester = playFocus)
                         playLabel?.let { Text(it, Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         playSub?.let { Text(it, Modifier.padding(horizontal = 20.dp), color = C.Muted, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         VSpace(16.dp)
@@ -228,8 +229,8 @@ fun FilmCard(
 
 /** A big round button glowing in the film's colour: the one thing to press. */
 @Composable
-fun PlayOrb(onClick: () -> Unit, glow: Color, icon: ImageVector = Icons.Play, modifier: Modifier = Modifier) {
-    Focusable(onClick, modifier, CircleShape, lift = 1.08f, ring = false) { f ->
+fun PlayOrb(onClick: () -> Unit, glow: Color, icon: ImageVector = Icons.Play, modifier: Modifier = Modifier, focusRequester: androidx.compose.ui.focus.FocusRequester? = null) {
+    Focusable(onClick, modifier, CircleShape, lift = 1.08f, focusRequester = focusRequester, ring = false) { f ->
         Box(
             Modifier.size(92.dp).background(glow.copy(alpha = if (f) 0.45f else 0.24f), CircleShape),
             contentAlignment = Alignment.Center,
