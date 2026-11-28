@@ -312,12 +312,13 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
                     }
                 },
                 modifier = Modifier.statusBarsPadding().padding(horizontal = 36.dp),
-                maxWidth = if (wide) 340.dp else 300.dp,
+                maxWidth = if (wide) 320.dp else 270.dp,
                 topRoom = 60.dp,
+                artRatio = 0.9f,
                 artModifier = Modifier.clickable { onOpen(it) },
             ) {
                 Box(Modifier.clickable { onOpen(it) }.padding(horizontal = 18.dp), contentAlignment = Alignment.Center) {
-                    TitleArt(it.name, it.logo, 54.dp, 220.dp, MaterialTheme.typography.headlineSmall, center = true)
+                    TitleArt(it.name, it.logo, 46.dp, 200.dp, MaterialTheme.typography.headlineSmall, center = true, mono = true)
                 }
                 VSpace(6.dp)
                 Meta(listOf(if (it.type == "series") "مسلسل" else "فيلم", it.year, it.rating?.let { r -> "★ $r" }))

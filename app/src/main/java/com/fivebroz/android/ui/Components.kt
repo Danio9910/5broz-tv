@@ -391,8 +391,9 @@ fun RankedPoster(rank: Int, item: Preview, width: Dp, onClick: () -> Unit, onFoc
             "$rank",
             Modifier.align(Alignment.BottomStart).offset(y = 18.dp),
             style = TextStyle(
-                fontFamily = Cormorant,
-                fontWeight = FontWeight.SemiBold,
+                // Amiri's 1 has a flag; Cormorant's reads as the letter I
+                fontFamily = Amiri,
+                fontWeight = FontWeight.Bold,
                 fontSize = (width.value * 1.05f).sp,
                 brush = Brush.verticalGradient(listOf(Color(0xFFF3E3B5), C.Gold, Color(0xFF8A6A33))),
                 drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f),
@@ -538,12 +539,14 @@ fun TitleArt(
     style: androidx.compose.ui.text.TextStyle,
     center: Boolean = false,
     modifier: Modifier = Modifier,
+    mono: Boolean = false, // the wordmark in plain white (some logos are too dark on a coloured page)
 ) {
     if (logo != null) {
         AsyncImage(
             model = logo,
             contentDescription = name,
             contentScale = ContentScale.Fit,
+            colorFilter = if (mono) androidx.compose.ui.graphics.ColorFilter.tint(Color.White) else null,
             alignment = if (center) Alignment.Center else Alignment.CenterStart,
             modifier = modifier.height(maxHeight).androidxWidthIn(maxWidth),
         )

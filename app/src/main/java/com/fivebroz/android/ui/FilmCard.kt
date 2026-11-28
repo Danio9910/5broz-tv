@@ -129,6 +129,7 @@ fun FilmCard(
     maxWidth: Dp = 440.dp,
     topRoom: Dp = 64.dp,
     artModifier: Modifier = Modifier,
+    artRatio: Float = 1.02f,
     playFocus: androidx.compose.ui.focus.FocusRequester? = null,
     body: @Composable ColumnScope.() -> Unit,
 ) {
@@ -156,7 +157,7 @@ fun FilmCard(
 
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
         val w = minOf(maxWidth, this.maxWidth)
-        val artH = w * 1.02f
+        val artH = w * artRatio
         val imgH = w * 1.5f // posters are 2:3
         val up: Dp = lift?.let { (imgH * it + 56.dp).coerceAtMost(150.dp) } ?: 0.dp
         val room = if (cut != null && lift != null) maxOf(topRoom, up + 8.dp) else topRoom

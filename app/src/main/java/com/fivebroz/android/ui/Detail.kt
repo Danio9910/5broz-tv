@@ -421,7 +421,7 @@ private fun PhoneDetail(
                         Box(Modifier.padding(horizontal = 40.dp)) { ProgressLine(resumeProgress) }
                         VSpace(14.dp)
                     }
-                    TitleArt(d.base.name, d.base.logo, 64.dp, 250.dp, MaterialTheme.typography.headlineMedium.copy(fontSize = 26.sp, lineHeight = 34.sp), center = true, modifier = Modifier.padding(horizontal = 20.dp))
+                    TitleArt(d.base.name, d.base.logo, 64.dp, 250.dp, MaterialTheme.typography.headlineMedium.copy(fontSize = 26.sp, lineHeight = 34.sp), center = true, modifier = Modifier.padding(horizontal = 20.dp), mono = true)
                     VSpace(8.dp)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         d.base.rating?.let { Text("★ $it", color = C.Gold, style = MaterialTheme.typography.labelLarge) }
