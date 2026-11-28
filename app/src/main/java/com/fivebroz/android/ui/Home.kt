@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -190,14 +192,14 @@ private fun PhoneHome(
 
     // Ambient glow: the page beneath the hero takes on the colour of the title showing.
     var heroItem by remember { mutableStateOf<Preview?>(null) }
-    val glow = rememberAmbient(heroItem?.background ?: heroItem?.poster)
+    val glow = rememberGlow(heroItem?.let { Cuts.now(it.id)?.poster ?: it.poster ?: it.background }).copy(alpha = 0.8f)
     // Kids get a brighter, playful night sky; everyone else the hero's colour.
     val sky = if (kids) Brush.verticalGradient(0f to Color(0xFF3A2B70), 0.45f to Color(0xFF15405A), 1f to C.Ink950)
     else Brush.verticalGradient(0f to glow, 0.55f to C.Ink950)
     Box(Modifier.fillMaxSize().background(sky)) {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
             item("hero") {
-                if (home == null) Skeleton(Modifier.fillMaxWidth().height(heroH), RectShape)
+                if (home == null) Skeleton(Modifier.statusBarsPadding().padding(top = 60.dp).padding(horizontal = 36.dp).fillMaxWidth().height(heroH), RoundedCornerShape(34.dp))
                 else if (home.heroes.isNotEmpty()) PhoneHero(home.heroes, heroH, tablet, onOpen) { heroItem = it }
             }
             if (home == null) {
@@ -290,75 +292,38 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
             if (!pager.isScrollInProgress) pager.animateScrollToPage((pager.currentPage + 1) % items.size, animationSpec = tween(600))
         }
     }
-    // Trailer preview: after the hero has rested on a title for a few seconds, its trailer plays muted.
-    var trailer by remember { mutableStateOf<Pair<Int, String>?>(null) }
-    var muted by remember { mutableStateOf(true) }
-    var trailerOn by remember { mutableStateOf(false) }
-    LaunchedEffect(pager.currentPage, items) {
-        trailer = null
-        trailerOn = false
-        muted = true
-        if (!Prefs.heroTrailer || Prefs.profileKids) return@LaunchedEffect
-        val page = pager.currentPage
-        val p = items.getOrNull(page) ?: return@LaunchedEffect
-        val key = runCatching { com.fivebroz.android.data.Api.detail(p.type, p.id)?.trailer }.getOrNull() ?: return@LaunchedEffect
-        trailer = page to key
-    }
     LaunchedEffect(pager.currentPage) { onPage(items.getOrNull(pager.currentPage)) }
-    Box(Modifier.fillMaxWidth().height(height).clipToBounds()) {
-        HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
+    val glow = rememberGlow(items.getOrNull(pager.currentPage)?.let { Cuts.now(it.id)?.poster ?: it.poster ?: it.background })
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        // The film in a card, like the install page: its character steps out when there's a clean cut-out.
+        HorizontalPager(pager, Modifier.fillMaxWidth(), beyondViewportPageCount = 1) { page ->
             val it = items[page]
-            Box(Modifier.fillMaxSize()) {
-                Img(if (wide) it.background ?: it.poster else it.poster ?: it.background, Modifier.fillMaxSize().kenBurns(), it.name)
-                trailer?.takeIf { t -> t.first == page }?.let { t ->
-                    // a 16:9 video scaled to cover the hero
-                    TrailerBackground(t.second, Modifier.fillMaxSize().graphicsLayer { if (!wide) { scaleX = 2.2f; scaleY = 2.2f } }, muted = muted, enabled = true) { trailerOn = it }
+            FilmCard(
+                id = it.id,
+                poster = it.poster ?: it.background,
+                glow = glow,
+                playLabel = if (starting && page == pager.currentPage) "لحظة…" else "تشغيل",
+                playSub = null,
+                onPlay = {
+                    if (!starting) scope.launch {
+                        starting = true
+                        if (!quickPlay(ctx, it)) onOpen(it)
+                        starting = false
+                    }
+                },
+                modifier = Modifier.statusBarsPadding().padding(horizontal = 36.dp),
+                maxWidth = if (wide) 340.dp else 300.dp,
+                topRoom = 60.dp,
+                artModifier = Modifier.clickable { onOpen(it) },
+            ) {
+                Box(Modifier.clickable { onOpen(it) }.padding(horizontal = 18.dp), contentAlignment = Alignment.Center) {
+                    TitleArt(it.name, it.logo, 54.dp, 220.dp, MaterialTheme.typography.headlineSmall, center = true)
                 }
-                Box(
-                    Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(
-                            0f to C.Ink950.copy(alpha = 0.35f),
-                            0.22f to Color.Transparent,
-                            0.55f to Color.Transparent,
-                            0.82f to C.Ink950.copy(alpha = 0.85f),
-                            1f to C.Ink950,
-                        ),
-                    ),
-                )
-                Column(
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 70.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    TitleArt(it.name, it.logo, 96.dp, 300.dp, MaterialTheme.typography.displayLarge, center = true)
-                    VSpace(10.dp)
-                    Meta(listOf(if (it.type == "series") "مسلسل" else "فيلم", it.year, it.rating?.let { r -> "★ $r" }))
-                }
+                VSpace(6.dp)
+                Meta(listOf(if (it.type == "series") "مسلسل" else "فيلم", it.year, it.rating?.let { r -> "★ $r" }))
             }
         }
-        Row(
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // Play really plays (or resumes); details opens the page.
-            GoldButton(if (starting) "لحظة…" else "تشغيل", {
-                val p = items[pager.currentPage]
-                if (!starting) scope.launch {
-                    starting = true
-                    if (!quickPlay(ctx, p)) onOpen(p)
-                    starting = false
-                }
-            }, icon = Icons.Play)
-            GoldButton("التفاصيل", { onOpen(items[pager.currentPage]) }, filled = false, icon = Icons.Info)
-        }
-        if (items.size > 1) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp)) { Dots(items.size, pager.currentPage) }
-        if (trailerOn && trailer?.first == pager.currentPage) {
-            Focusable({ muted = !muted }, Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 30.dp), shape = CircleShape, lift = 1.05f, ring = false) {
-                Box(Modifier.size(36.dp).background(C.Ink950.copy(alpha = 0.55f)).border(1.dp, C.Paper.copy(alpha = 0.3f), CircleShape), contentAlignment = Alignment.Center) {
-                    Ic(if (muted) Icons.Mute else Icons.Sound, 18.dp)
-                }
-            }
-        }
+        if (items.size > 1) Box(Modifier.padding(top = 12.dp)) { Dots(items.size, pager.currentPage) }
     }
 }
 
