@@ -41,8 +41,8 @@ import org.json.JSONObject
  * 5broz and is not kept). Nuvio keeps its history on Trakt, so it comes through Trakt.
  */
 object Importer {
-    data class Got(val library: JSONArray, val progress: JSONArray, val watched: JSONArray) {
-        val total get() = library.length() + progress.length() + watched.length()
+    data class Got(val library: JSONArray, val progress: JSONArray, val watched: JSONArray, val addons: List<Pair<String, String>> = emptyList()) {
+        val total get() = library.length() + progress.length() + watched.length() + addons.size
     }
 
     private const val STREMIO = "https://api.strem.io/api"
@@ -84,7 +84,20 @@ object Importer {
                     watched.put(JSONObject().put("metaId", id).put("videoId", id).put("type", type).put("name", name).put("poster", poster ?: JSONObject.NULL))
                 }
             }
-            return Got(library, progress, watched)
+            // the addons too, like Nuvio does (Stremio's own built-in ones are left out)
+            val addons = runCatching {
+                val a = Net.postObj("$STREMIO/addonCollectionGet", JSONObject().put("type", "AddonCollectionGet").put("authKey", key).put("update", true))
+                    .optJSONObject("result")?.optJSONArray("addons") ?: JSONArray()
+                (0 until a.length()).mapNotNull { i ->
+                    val x = a.optJSONObject(i) ?: return@mapNotNull null
+                    val url = x.optString("transportUrl")
+                    val m = x.optJSONObject("manifest")
+                    val mid = m?.optString("id").orEmpty()
+                    if (!url.startsWith("http") || mid == "org.stremio.local" || mid == "com.linvo.cinemeta") null
+                    else url to (m?.optString("name")?.takeIf { it.isNotBlank() } ?: url)
+                }
+            }.getOrDefault(emptyList())
+            return Got(library, progress, watched, addons)
         } finally {
             runCatching { Net.postObj("$STREMIO/logout", JSONObject().put("type", "Logout").put("authKey", key)) }
         }
@@ -103,7 +116,15 @@ object Importer {
         )
     }
 
-    suspend fun save(g: Got) = Db.importAll(g.library, g.progress, g.watched)
+    /** Returns how many addons were new to the house. */
+    suspend fun save(g: Got): Int {
+        Db.importAll(g.library, g.progress, g.watched)
+        if (g.addons.isEmpty()) return 0
+        val have = Db.addonUrls().toSet()
+        var n = 0
+        for ((url, name) in g.addons) if (url !in have && Db.addAddon(url, name)) n++
+        return n
+    }
 }
 
 @Composable
@@ -126,10 +147,11 @@ fun ImportScreen(onBack: () -> Unit) {
                 } else if (g.total == 0) {
                     error = "ما لقينا شي في الحساب نستورده."
                 } else {
-                    Importer.save(g)
+                    val newAddons = Importer.save(g)
                     ItemEvents.libraryVersion++
                     ItemEvents.resumeVersion++
-                    result = "تم: ${g.library.length()} في قائمتي، ${g.progress.length()} تكمّلها من وين وقفت، ${g.watched.length()} شفتها قبل."
+                    result = "تم: ${g.library.length()} في قائمتي، ${g.progress.length()} تكمّلها من وين وقفت، ${g.watched.length()} شفتها قبل" +
+                        (if (g.addons.isNotEmpty()) "، و$newAddons إضافة جديدة للبيت." else ".")
                     pass = ""
                 }
             } catch (e: Exception) {
@@ -158,7 +180,7 @@ fun ImportScreen(onBack: () -> Unit) {
             VSpace(22.dp)
             Column(Modifier.widthIn(max = 520.dp).fillMaxWidth().background(C.Ink900, RoundedCornerShape(20.dp)).padding(18.dp)) {
                 Text("ستريميو", style = MaterialTheme.typography.titleLarge)
-                Text("بإيميل وكلمة مرور حسابك في ستريميو. نستخدمها مرة وحدة للنقل، وما نحفظها.", color = C.Muted, style = MaterialTheme.typography.bodySmall)
+                Text("بإيميل وكلمة مرور حسابك في ستريميو: القائمة، ووين وقفت، واللي شفته، والإضافات. نستخدمها مرة وحدة للنقل، وما نحفظها.", color = C.Muted, style = MaterialTheme.typography.bodySmall)
                 VSpace(12.dp)
                 Field(email, { email = it }, "الإيميل", {}, plainText = true, center = false)
                 VSpace(8.dp)
