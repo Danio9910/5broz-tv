@@ -330,9 +330,9 @@ private fun PhoneHero(items: List<Preview>, height: Dp, wide: Boolean, onOpen: (
                     }
                 },
                 modifier = (if (chipsAbove) Modifier else Modifier.statusBarsPadding()).padding(horizontal = 36.dp),
-                maxWidth = if (wide) 320.dp else 270.dp,
+                maxWidth = if (wide) 320.dp else if (chipsAbove) 244.dp else 270.dp,
                 topRoom = if (chipsAbove) 18.dp else 60.dp,
-                artRatio = 0.9f,
+                artRatio = if (chipsAbove && !wide) 0.84f else 0.9f,
                 artModifier = Modifier.clickable { onOpen(it) },
             ) {
                 Box(Modifier.clickable { onOpen(it) }.padding(horizontal = 18.dp), contentAlignment = Alignment.Center) {
