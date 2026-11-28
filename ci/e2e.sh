@@ -62,6 +62,8 @@ adb shell am start -n $PKG/.MainActivity
 sleep 0.5; shot 0a-intro
 sleep 0.4; shot 0b-intro
 sleep 19; shot 1-home
+# the hero turns every 7 s: catch each film's card (checks cut-outs sit on their posters)
+for p in 2 3 4 5; do sleep 7.2; shot 1-hero-$p; done
 adb shell input swipe $((W/2)) $((H*3/4)) $((W/2)) $((H/4)) 400
 sleep 2; shot 1b-home-scrolled
 # Long-press a poster: the quick-actions menu.
