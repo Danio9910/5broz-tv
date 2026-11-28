@@ -1,0 +1,72 @@
+[
+ {
+  "film": "أفنجرز: ظهور دكتور دووم",
+  "model": "birefnet-general",
+  "area": 0.988,
+  "top": 1.0,
+  "blobs": 1
+ },
+ {
+  "film": "أفنجرز: ظهور دكتور دووم",
+  "model": "isnet-general-use",
+  "area": 0.043,
+  "top": 0.0,
+  "blobs": 1
+ },
+ {
+  "film": "ألعاب الجوع: شروق الشمس عند الحصاد",
+  "model": "birefnet-general",
+  "area": 0.421,
+  "top": 0.0,
+  "blobs": 1
+ },
+ {
+  "film": "ألعاب الجوع: شروق الشمس عند الحصاد",
+  "model": "isnet-general-use",
+  "area": 0.46,
+  "top": 0.0,
+  "blobs": 1
+ },
+ {
+  "film": "الأوديسة",
+  "model": "birefnet-general",
+  "area": 0.186,
+  "top": 0.0,
+  "blobs": 1
+ },
+ {
+  "film": "الأوديسة",
+  "model": "isnet-general-use",
+  "area": 0.148,
+  "top": 0.0,
+  "blobs": 1
+ },
+ {
+  "film": "حكاية سَِحر",
+  "model": "birefnet-general",
+  "area": 0.153,
+  "top": 0.044,
+  "blobs": 1
+ },
+ {
+  "film": "حكاية سَِحر",
+  "model": "isnet-general-use",
+  "area": 0.149,
+  "top": 0.047,
+  "blobs": 1
+ },
+ {
+  "film": "فوكر إن لو",
+  "model": "birefnet-general",
+  "area": 0.215,
+  "top": 0.0,
+  "blobs": 1
+ },
+ {
+  "film": "فوكر إن لو",
+  "model": "isnet-general-use",
+  "area": 0.294,
+  "top": 0.005,
+  "blobs": 2
+ }
+]
