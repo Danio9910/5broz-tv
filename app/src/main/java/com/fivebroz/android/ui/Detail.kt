@@ -384,10 +384,14 @@ private fun PhoneDetail(
     var pickSeason by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
     val tablet = LocalIsTablet.current
-    val headH = (LocalConfiguration.current.screenWidthDp * if (tablet) 0.46f else 0.66f).dp
+    val headH = (minOf(LocalConfiguration.current.screenWidthDp.toFloat(), 460f) * 1.2f).dp
 
-    val ambient = rememberAmbient(d.base.background ?: d.base.poster)
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to ambient, 0.75f to C.Ink950))) {
+    val glow = rememberGlow(Cuts.now(d.base.id)?.poster ?: d.base.poster ?: d.base.background)
+    Box(
+        Modifier.fillMaxSize().background(C.Ink950).background(
+            Brush.verticalGradient(0f to glow.copy(alpha = 0.85f), 0.45f to glow.copy(alpha = 0.18f), 0.8f to C.Ink950),
+        ),
+    ) {
         val list = androidx.compose.foundation.lazy.rememberLazyListState()
         val density = androidx.compose.ui.platform.LocalDensity.current
         val headPx = with(density) { headH.toPx() }
@@ -400,47 +404,52 @@ private fun PhoneDetail(
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 28.dp)) {
             item("head") {
                 val artKey = remember { Shared.fresh() }
-                Box(
-                    Modifier.fillMaxWidth().height(headH).sharedArt(artKey).graphicsLayer {
-                        // parallax: the picture moves at half speed and dims as it leaves
-                        if (list.firstVisibleItemIndex == 0) translationY = list.firstVisibleItemScrollOffset * 0.5f
-                        alpha = 1f - past * 0.6f
-                        clip = true
-                    },
+                val resuming = resumeVideo == m.mainVideo && resumeProgress > 0f
+                FilmCard(
+                    id = d.base.id,
+                    poster = d.base.poster ?: d.base.background,
+                    glow = glow,
+                    playLabel = m.mainText,
+                    playSub = if (resuming) remainingText(d, resumeProgress) else null,
+                    onPlay = if (m.mainText != null && m.mainVideo != null) ({ play(m.mainVideo, m.mainLabel, null) }) else null,
+                    modifier = Modifier.statusBarsPadding().padding(horizontal = g),
+                    maxWidth = if (tablet) 460.dp else 440.dp,
+                    topRoom = 52.dp,
+                    artModifier = Modifier.sharedArt(artKey),
                 ) {
-                    Img(d.base.background ?: d.base.poster, Modifier.fillMaxSize().kenBurns())
-                    TrailerBackground(d.trailer, Modifier.fillMaxSize())
-                    Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(0f to C.Ink950.copy(alpha = 0.45f), 0.3f to Color.Transparent, 1f to ambient),
-                        ),
-                    )
-                }
-            }
-            item("info") {
-                Column(Modifier.padding(horizontal = g).widthIn(max = 760.dp)) {
-                    TitleArt(d.base.name, d.base.logo, 84.dp, 280.dp, MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp, lineHeight = 36.sp))
+                    if (resuming) {
+                        Box(Modifier.padding(horizontal = 40.dp)) { ProgressLine(resumeProgress) }
+                        VSpace(14.dp)
+                    }
+                    TitleArt(d.base.name, d.base.logo, 64.dp, 250.dp, MaterialTheme.typography.headlineMedium.copy(fontSize = 26.sp, lineHeight = 34.sp), center = true, modifier = Modifier.padding(horizontal = 20.dp))
                     VSpace(8.dp)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         d.base.rating?.let { Text("★ $it", color = C.Gold, style = MaterialTheme.typography.labelLarge) }
                         Meta(listOf(d.base.year, d.runtime, if (m.seasons.size > 1) "${m.seasons.size} مواسم" else null))
                         d.certification?.let { CertBadge(it) }
                     }
-                    ratingsLine(d.ratings)?.let { Text(it, Modifier.padding(top = 4.dp), color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                    guideLine(d.guide)?.let { Text(it, Modifier.padding(top = 4.dp), color = if (d.guide.values.any { v -> v >= 2 }) C.Gold else C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-                    VSpace(18.dp)
-                    if (m.mainText != null && m.mainVideo != null) {
-                        GoldButton(m.mainText, { play(m.mainVideo, m.mainLabel, null) }, Modifier.fillMaxWidth(), fill = true, icon = Icons.Play)
-                        if (resumeVideo == m.mainVideo && resumeProgress > 0f) {
-                            VSpace(8.dp)
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Box(Modifier.weight(1f)) { ProgressLine(resumeProgress) }
-                                remainingText(d, resumeProgress)?.let { Text(it, color = C.Muted, style = MaterialTheme.typography.labelMedium) }
-                            }
-                        }
-                    } else if (available == false || !m.canPlay) {
-                        Text(unavailableText(m), color = C.Muted, style = MaterialTheme.typography.bodyMedium)
+                    guideLine(d.guide)?.let { Text(it, Modifier.padding(top = 6.dp, start = 20.dp, end = 20.dp), color = if (d.guide.values.any { v -> v >= 2 }) C.Gold else C.Muted, style = MaterialTheme.typography.labelMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                    if (m.mainText == null && (available == false || !m.canPlay)) {
+                        Text(unavailableText(m), Modifier.padding(top = 10.dp, start = 20.dp, end = 20.dp), color = C.Muted, style = MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
+                    VSpace(14.dp)
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        val w = Modifier.weight(1f)
+                        // Four clear actions; the rest live under "more".
+                        ActionIcon(if (saved) Icons.Check else Icons.Plus, "قائمتي", toggleSaved, on = saved, modifier = w, fly = d.base.poster)
+                        ActionIcon(
+                            when (x.rating) { 1 -> Icons.ThumbUp; -1 -> Icons.ThumbDown; else -> Icons.Star },
+                            when (x.rating) { 1 -> "أعجبني"; -1 -> "ليس لي"; else -> "تقييم" },
+                            { x.openSheet("rate") }, on = x.rating != 0, modifier = w, cheer = x.rating.takeIf { it == 1 },
+                        )
+                        x.onTrailer?.let { ActionIcon(Icons.Trailer, "الإعلان", it, modifier = w) }
+                        ActionIcon(Icons.More, "المزيد", { x.openSheet("more") }, modifier = w)
+                    }
+                }
+            }
+            item("info") {
+                Column(Modifier.padding(horizontal = g + 4.dp).widthIn(max = 760.dp)) {
+                    ratingsLine(d.ratings)?.let { Text(it, Modifier.padding(top = 14.dp), color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     if (!d.base.description.isNullOrBlank()) {
                         VSpace(16.dp)
                         Focusable({ expanded = !expanded }, ring = false, lift = 1f, shape = RoundedCornerShape(4.dp)) {
@@ -460,19 +469,6 @@ private fun PhoneDetail(
                     }
                     if (d.director.isNotEmpty()) {
                         Text("إخراج: " + d.director.joinToString("، "), color = C.Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    VSpace(18.dp)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        val w = Modifier.weight(1f)
-                        // Four clear actions; the rest live under "more".
-                        ActionIcon(if (saved) Icons.Check else Icons.Plus, "قائمتي", toggleSaved, on = saved, modifier = w, fly = d.base.poster)
-                        ActionIcon(
-                            when (x.rating) { 1 -> Icons.ThumbUp; -1 -> Icons.ThumbDown; else -> Icons.Star },
-                            when (x.rating) { 1 -> "أعجبني"; -1 -> "ليس لي"; else -> "تقييم" },
-                            { x.openSheet("rate") }, on = x.rating != 0, modifier = w, cheer = x.rating.takeIf { it == 1 },
-                        )
-                        x.onTrailer?.let { ActionIcon(Icons.Trailer, "الإعلان", it, modifier = w) }
-                        ActionIcon(Icons.More, "المزيد", { x.openSheet("more") }, modifier = w)
                     }
                     VSpace(10.dp)
                 }
